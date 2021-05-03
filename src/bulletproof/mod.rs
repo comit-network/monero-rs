@@ -6,6 +6,7 @@
 #![allow(non_snake_case)]
 
 use core::iter;
+use std::convert::TryFrom;
 
 use curve25519_dalek::edwards::{CompressedEdwardsY, EdwardsPoint};
 use curve25519_dalek::scalar::Scalar;
@@ -28,6 +29,65 @@ lazy_static::lazy_static! {
     pub (crate) static ref INV_EIGHT: Scalar = {
         Scalar::from(8u8).invert()
     };
+}
+
+/// Generate `Bulletproof` for the provided `amounts`.
+///
+/// Also returns the amount commitments, together with their
+/// corresponding random blindings.
+pub fn make_bulletproof<T>(
+    rng: &mut T,
+    amounts: &[u64],
+) -> Result<
+    (
+        crate::util::ringct::Bulletproof,
+        Vec<CompressedEdwardsY>,
+        Vec<Scalar>,
+    ),
+    ProofError,
+>
+where
+    T: RngCore + CryptoRng,
+{
+    let amount_bits = 64;
+    let n_commitments = amounts.len();
+
+    let bp_gens = BulletproofGens::new(amount_bits, n_commitments);
+    let pc_gens = PedersenGens::default();
+
+    let blindings = (0..amounts.len())
+        .map(|_| Scalar::random(rng))
+        .collect::<Vec<_>>();
+
+    let (proof, commitments) = RangeProof::prove_multiple_with_rng(
+        &bp_gens,
+        &pc_gens,
+        amounts,
+        &blindings,
+        amount_bits,
+        rng,
+    )?;
+
+    Ok((proof.into(), commitments, blindings))
+}
+
+/// Verify that the `proof` is valid for the provided commitments.
+pub fn verify_bulletproof<T>(
+    rng: &mut T,
+    proof: crate::util::ringct::Bulletproof,
+    commitments: Vec<CompressedEdwardsY>,
+) -> Result<(), ProofError>
+where
+    T: RngCore + CryptoRng,
+{
+    let amount_bits = 64;
+    let n_commitments = commitments.len();
+
+    let bp_gens = BulletproofGens::new(amount_bits, n_commitments);
+    let pc_gens = PedersenGens::default();
+
+    let proof = RangeProof::try_from(proof).map_err(|_| ProofError::FormatError)?;
+    proof.verify_multiple_with_rng(&bp_gens, &pc_gens, &commitments, amount_bits, rng)
 }
 
 /// The `RangeProof` struct represents a proof that one or more values
@@ -64,54 +124,6 @@ pub struct RangeProof {
     e_blinding: Scalar,
     /// Proof data for the inner-product argument.
     ipp_proof: InnerProductProof,
-}
-
-impl From<RangeProof> for crate::util::ringct::Bulletproof {
-    fn from(from: RangeProof) -> Self {
-        use crate::util::ringct::Key;
-
-        Self {
-            A: Key {
-                key: from.A.to_bytes(),
-            },
-            S: Key {
-                key: from.S.to_bytes(),
-            },
-            T1: Key {
-                key: from.T_1.to_bytes(),
-            },
-            T2: Key {
-                key: from.T_2.to_bytes(),
-            },
-            taux: Key {
-                key: from.t_x_blinding.to_bytes(),
-            },
-            mu: Key {
-                key: from.e_blinding.to_bytes(),
-            },
-            L: from
-                .ipp_proof
-                .L_vec
-                .iter()
-                .map(|l| Key { key: l.to_bytes() })
-                .collect(),
-            R: from
-                .ipp_proof
-                .R_vec
-                .iter()
-                .map(|r| Key { key: r.to_bytes() })
-                .collect(),
-            a: Key {
-                key: from.ipp_proof.a.to_bytes(),
-            },
-            b: Key {
-                key: from.ipp_proof.b.to_bytes(),
-            },
-            t: Key {
-                key: from.t_x.to_bytes(),
-            },
-        }
-    }
 }
 
 impl RangeProof {
@@ -686,9 +698,100 @@ pub enum MPCError {
     },
 }
 
+impl From<RangeProof> for crate::util::ringct::Bulletproof {
+    fn from(from: RangeProof) -> Self {
+        use crate::util::ringct::Key;
+
+        Self {
+            A: Key {
+                key: from.A.to_bytes(),
+            },
+            S: Key {
+                key: from.S.to_bytes(),
+            },
+            T1: Key {
+                key: from.T_1.to_bytes(),
+            },
+            T2: Key {
+                key: from.T_2.to_bytes(),
+            },
+            taux: Key {
+                key: from.t_x_blinding.to_bytes(),
+            },
+            mu: Key {
+                key: from.e_blinding.to_bytes(),
+            },
+            L: from
+                .ipp_proof
+                .L_vec
+                .iter()
+                .map(|l| Key { key: l.to_bytes() })
+                .collect(),
+            R: from
+                .ipp_proof
+                .R_vec
+                .iter()
+                .map(|r| Key { key: r.to_bytes() })
+                .collect(),
+            a: Key {
+                key: from.ipp_proof.a.to_bytes(),
+            },
+            b: Key {
+                key: from.ipp_proof.b.to_bytes(),
+            },
+            t: Key {
+                key: from.t_x.to_bytes(),
+            },
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct NonCanonicalScalar;
+
+impl TryFrom<crate::util::ringct::Bulletproof> for RangeProof {
+    type Error = NonCanonicalScalar;
+
+    fn try_from(from: crate::util::ringct::Bulletproof) -> Result<Self, NonCanonicalScalar> {
+        Ok(Self {
+            A: CompressedEdwardsY::from_slice(&from.A.key),
+            S: CompressedEdwardsY::from_slice(&from.S.key),
+            T_1: CompressedEdwardsY::from_slice(&from.T1.key),
+            T_2: CompressedEdwardsY::from_slice(&from.T2.key),
+            t_x: Scalar::from_canonical_bytes(from.t.key).ok_or_else(|| NonCanonicalScalar)?,
+            t_x_blinding: Scalar::from_canonical_bytes(from.taux.key)
+                .ok_or_else(|| NonCanonicalScalar)?,
+            e_blinding: Scalar::from_canonical_bytes(from.mu.key)
+                .ok_or_else(|| NonCanonicalScalar)?,
+            ipp_proof: InnerProductProof {
+                L_vec: from
+                    .L
+                    .iter()
+                    .map(|L| CompressedEdwardsY::from_slice(&L.key))
+                    .collect(),
+                R_vec: from
+                    .R
+                    .iter()
+                    .map(|R| CompressedEdwardsY::from_slice(&R.key))
+                    .collect(),
+                a: Scalar::from_canonical_bytes(from.a.key).ok_or_else(|| NonCanonicalScalar)?,
+                b: Scalar::from_canonical_bytes(from.b.key).ok_or_else(|| NonCanonicalScalar)?,
+            },
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn public_api() {
+        let mut rng = rand::thread_rng();
+        let (proof, commitments, _) = make_bulletproof(&mut rng, &[100u64, 2000u64]).unwrap();
+
+        assert!(verify_bulletproof(&mut rng, proof, commitments).is_ok())
+    }
 
     #[test]
     fn test_delta() {

@@ -64,7 +64,7 @@ mod internal_macros;
 #[macro_use]
 pub mod consensus;
 pub mod blockdata;
-pub mod bulletproof;
+mod bulletproof;
 pub mod cryptonote;
 pub mod network;
 pub mod util;
@@ -73,6 +73,7 @@ pub use blockdata::transaction::OwnedTxOut;
 pub use blockdata::transaction::Transaction;
 pub use blockdata::transaction::TxIn;
 pub use blockdata::transaction::TxOut;
+pub use bulletproof::{make_bulletproof, verify_bulletproof};
 pub use network::Network;
 pub use util::address::Address;
 pub use util::key::PrivateKey;
