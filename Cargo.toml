@@ -39,7 +39,6 @@ subtle = { version = "2", default-features = false }
 hash_edwards_to_edwards = { git = "https://github.com/comit-network/hash_edwards_to_edwards" }
 integer-encoding = "3"
 rand = { version = "0.7", optional = true }
-rand_core = { version = "0.5", default-features = false, features = ["alloc"] }
 lazy_static = "1"
 clear_on_drop = { version = "0.2", default-features = false }
 

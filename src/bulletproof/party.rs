@@ -12,7 +12,7 @@ use clear_on_drop::clear::Clear;
 use curve25519_dalek::edwards::{CompressedEdwardsY, EdwardsPoint};
 use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::traits::MultiscalarMul;
-use rand_core::{CryptoRng, RngCore};
+use rand::{CryptoRng, RngCore};
 
 use crate::bulletproof::generators::{BulletproofGens, PedersenGens};
 use crate::bulletproof::messages::*;

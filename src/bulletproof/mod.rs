@@ -10,8 +10,7 @@ use core::iter;
 use curve25519_dalek::edwards::{CompressedEdwardsY, EdwardsPoint};
 use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::traits::{IsIdentity, VartimeMultiscalarMul};
-use rand_core::{CryptoRng, RngCore};
-use thiserror;
+use rand::{CryptoRng, RngCore};
 use tiny_keccak::{Hasher, Keccak};
 
 use inner_product_proof::InnerProductProof;
