@@ -132,44 +132,6 @@ impl RangeProof {
     ///
     /// This is a convenience wrapper around
     /// [`RangeProof::prove_multiple`].
-    ///
-    /// # Example
-    /// ```
-    /// use curve25519_dalek::scalar::Scalar;
-    ///
-    /// use monero::bulletproof::{RangeProof, BulletproofGens, PedersenGens};
-    ///
-    /// # fn main() {
-    /// // Generators for Pedersen commitments.  These can be selected
-    /// // independently of the Bulletproofs generators.
-    /// let pc_gens = PedersenGens::default();
-    ///
-    /// // Generators for Bulletproofs, valid for proofs up to bitsize 64
-    /// // and aggregation size up to 1.
-    /// let bp_gens = BulletproofGens::new(64, 1);
-    ///
-    /// // A secret value we want to prove lies in the range [0, 2^32)
-    /// let secret_value = 1037578891u64;
-    ///
-    /// // The API takes a blinding factor for the commitment.
-    /// let blinding = Scalar::random(&mut rand::thread_rng());
-    ///
-    /// // Create a 32-bit rangeproof.
-    /// let (proof, committed_value) = RangeProof::prove_single(
-    ///     &bp_gens,
-    ///     &pc_gens,
-    ///     secret_value,
-    ///     &blinding,
-    ///     32,
-    /// ).expect("A real program could handle errors");
-    ///
-    /// assert!(
-    ///     proof
-    ///         .verify_single(&bp_gens, &pc_gens, &committed_value, 32)
-    ///         .is_ok()
-    /// );
-    /// # }
-    /// ```
     pub fn prove_single_with_rng<T: RngCore + CryptoRng>(
         bp_gens: &BulletproofGens,
         pc_gens: &PedersenGens,
@@ -207,46 +169,6 @@ impl RangeProof {
     }
 
     /// Create a rangeproof for a set of values.
-    ///
-    /// # Example
-    /// ```
-    /// use rand::thread_rng;
-    ///
-    /// use curve25519_dalek::scalar::Scalar;
-    ///
-    /// use monero::bulletproof::{BulletproofGens, PedersenGens, RangeProof};
-    ///
-    /// # fn main() {
-    /// // Generators for Pedersen commitments.  These can be selected
-    /// // independently of the Bulletproofs generators.
-    /// let pc_gens = PedersenGens::default();
-    ///
-    /// // Generators for Bulletproofs, valid for proofs up to bitsize 64
-    /// // and aggregation size up to 16.
-    /// let bp_gens = BulletproofGens::new(64, 16);
-    ///
-    /// // Four secret values we want to prove lie in the range [0, 2^32)
-    /// let secrets = [4242344947u64, 3718732727u64, 2255562556u64, 2526146994u64];
-    ///
-    /// // The API takes blinding factors for the commitments.
-    /// let blindings: Vec<_> = (0..4).map(|_| Scalar::random(&mut thread_rng())).collect();
-    ///
-    /// // Create an aggregated 32-bit rangeproof and corresponding commitments.
-    /// let (proof, commitments) = RangeProof::prove_multiple(
-    ///     &bp_gens,
-    ///     &pc_gens,
-    ///     &secrets,
-    ///     &blindings,
-    ///     32,
-    /// ).expect("A real program could handle errors");
-    ///
-    /// assert!(
-    ///     proof
-    ///         .verify_multiple(&bp_gens, &pc_gens, &commitments, 32)
-    ///         .is_ok()
-    /// );
-    /// # }
-    /// ```
     pub fn prove_multiple_with_rng<T: RngCore + CryptoRng>(
         bp_gens: &BulletproofGens,
         pc_gens: &PedersenGens,
