@@ -4,6 +4,7 @@ rust:
   - beta
   - nightly
 script:
+  - sudo apt-get install libboost-dev
   - cargo build --verbose
   - cargo build --verbose --features serde_support
   - cargo build --verbose --features strict_encoding_support
