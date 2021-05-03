@@ -471,6 +471,48 @@ mod tests {
     use crate::bulletproof::BulletproofGens;
     use curve25519_dalek::constants::ED25519_BASEPOINT_POINT;
 
+    #[test]
+    fn make_ipp_1() {
+        test_helper_create(1);
+    }
+
+    #[test]
+    fn make_ipp_2() {
+        test_helper_create(2);
+    }
+
+    #[test]
+    fn make_ipp_4() {
+        test_helper_create(4);
+    }
+
+    #[test]
+    fn make_ipp_32() {
+        test_helper_create(32);
+    }
+
+    #[test]
+    fn make_ipp_64() {
+        test_helper_create(64);
+    }
+
+    #[test]
+    fn test_inner_product() {
+        let a = vec![
+            Scalar::from(1u64),
+            Scalar::from(2u64),
+            Scalar::from(3u64),
+            Scalar::from(4u64),
+        ];
+        let b = vec![
+            Scalar::from(2u64),
+            Scalar::from(3u64),
+            Scalar::from(4u64),
+            Scalar::from(5u64),
+        ];
+        assert_eq!(Scalar::from(40u64), inner_product(&a, &b));
+    }
+
     #[allow(clippy::many_single_char_names)]
     fn test_helper_create(n: usize) {
         let mut rng = rand::thread_rng();
@@ -545,47 +587,5 @@ mod tests {
                 w
             )
             .is_ok());
-    }
-
-    #[test]
-    fn make_ipp_1() {
-        test_helper_create(1);
-    }
-
-    #[test]
-    fn make_ipp_2() {
-        test_helper_create(2);
-    }
-
-    #[test]
-    fn make_ipp_4() {
-        test_helper_create(4);
-    }
-
-    #[test]
-    fn make_ipp_32() {
-        test_helper_create(32);
-    }
-
-    #[test]
-    fn make_ipp_64() {
-        test_helper_create(64);
-    }
-
-    #[test]
-    fn test_inner_product() {
-        let a = vec![
-            Scalar::from(1u64),
-            Scalar::from(2u64),
-            Scalar::from(3u64),
-            Scalar::from(4u64),
-        ];
-        let b = vec![
-            Scalar::from(2u64),
-            Scalar::from(3u64),
-            Scalar::from(4u64),
-            Scalar::from(5u64),
-        ];
-        assert_eq!(Scalar::from(40u64), inner_product(&a, &b));
     }
 }

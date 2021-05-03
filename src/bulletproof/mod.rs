@@ -718,47 +718,6 @@ mod tests {
         assert_eq!(power_g, delta(n, 1, &y, &z),);
     }
 
-    /// Given a bitsize `n`, test the following:
-    ///
-    /// 1. Generate `m` random values and create a proof they are all in range;
-    /// 2. Serialize to wire format;
-    /// 3. Deserialize from wire format;
-    /// 4. Verify the proof.
-    fn singleparty_create_and_verify_helper(n: usize, m: usize) {
-        // Split the test into two scopes, so that it's explicit what
-        // data is shared between the prover and the verifier.
-
-        // Use bincode for serialization
-        //use bincode; // already present in lib.rs
-
-        // Both prover and verifier have access to the generators and the proof
-        let max_bitsize = 64;
-        let max_parties = 16;
-        let pc_gens = PedersenGens::default();
-        let bp_gens = BulletproofGens::new(max_bitsize, max_parties);
-
-        // Prover's scope
-        let (proof, value_commitments) = {
-            use rand::Rng;
-            let mut rng = rand::thread_rng();
-
-            // 0. Create witness data
-            let (min, max) = (0u64, ((1u128 << n) - 1) as u64);
-            let values: Vec<u64> = (0..m).map(|_| rng.gen_range(min, max)).collect();
-            let blindings: Vec<Scalar> = (0..m).map(|_| Scalar::random(&mut rng)).collect();
-
-            // 1. Create and return the proof
-            RangeProof::prove_multiple(&bp_gens, &pc_gens, &values, &blindings, n).unwrap()
-        };
-
-        // Verifier's scope
-        {
-            assert!(proof
-                .verify_multiple(&bp_gens, &pc_gens, &value_commitments, n)
-                .is_ok());
-        }
-    }
-
     #[test]
     fn create_and_verify_n_32_m_1() {
         singleparty_create_and_verify_helper(32, 1);
@@ -955,5 +914,46 @@ mod tests {
         assert!(proof
             .verify_multiple(&bp_gens, &pc_gens, &commitments, 64)
             .is_ok());
+    }
+
+    /// Given a bitsize `n`, test the following:
+    ///
+    /// 1. Generate `m` random values and create a proof they are all in range;
+    /// 2. Serialize to wire format;
+    /// 3. Deserialize from wire format;
+    /// 4. Verify the proof.
+    fn singleparty_create_and_verify_helper(n: usize, m: usize) {
+        // Split the test into two scopes, so that it's explicit what
+        // data is shared between the prover and the verifier.
+
+        // Use bincode for serialization
+        //use bincode; // already present in lib.rs
+
+        // Both prover and verifier have access to the generators and the proof
+        let max_bitsize = 64;
+        let max_parties = 16;
+        let pc_gens = PedersenGens::default();
+        let bp_gens = BulletproofGens::new(max_bitsize, max_parties);
+
+        // Prover's scope
+        let (proof, value_commitments) = {
+            use rand::Rng;
+            let mut rng = rand::thread_rng();
+
+            // 0. Create witness data
+            let (min, max) = (0u64, ((1u128 << n) - 1) as u64);
+            let values: Vec<u64> = (0..m).map(|_| rng.gen_range(min, max)).collect();
+            let blindings: Vec<Scalar> = (0..m).map(|_| Scalar::random(&mut rng)).collect();
+
+            // 1. Create and return the proof
+            RangeProof::prove_multiple(&bp_gens, &pc_gens, &values, &blindings, n).unwrap()
+        };
+
+        // Verifier's scope
+        {
+            assert!(proof
+                .verify_multiple(&bp_gens, &pc_gens, &value_commitments, n)
+                .is_ok());
+        }
     }
 }
