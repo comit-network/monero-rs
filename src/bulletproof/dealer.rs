@@ -6,7 +6,7 @@ use core::iter;
 
 use curve25519_dalek::edwards::EdwardsPoint;
 use curve25519_dalek::scalar::Scalar;
-use tiny_keccak::{Hasher, Keccak};
+use keccak_hash::keccak_256;
 
 use crate::bulletproof::generators::{BulletproofGens, PedersenGens};
 use crate::bulletproof::inner_product_proof;
@@ -16,7 +16,7 @@ use crate::bulletproof::MPCError;
 use crate::bulletproof::RangeProof;
 
 /// Used to construct a dealer for the aggregated rangeproof MPC protocol.
-pub struct Dealer {}
+pub(crate) struct Dealer;
 
 impl Dealer {
     /// Creates a new dealer coordinating `m` parties proving `n`-bit ranges.
@@ -70,30 +70,27 @@ impl<'a> DealerAwaitingBitCommitments<'a> {
         let A: EdwardsPoint = bit_commitments.iter().map(|vc| vc.A_j).sum();
         let S: EdwardsPoint = bit_commitments.iter().map(|vc| vc.S_j).sum();
 
-        let mut keccak = Keccak::v256();
+        let mut input = vec![];
         for bit_commitment in bit_commitments.iter() {
-            keccak.update(bit_commitment.V_j.as_bytes());
+            input.extend_from_slice(bit_commitment.V_j.as_bytes());
         }
+
         let mut hash_commitments = [0u8; 32];
-        keccak.finalize(&mut hash_commitments);
+        keccak_256(&input, &mut hash_commitments);
         let hash_commitments = Scalar::from_bytes_mod_order(hash_commitments);
 
-        let mut keccak = Keccak::v256();
-        keccak.update(hash_commitments.as_bytes());
-        keccak.update(A.compress().as_bytes());
-        keccak.update(S.compress().as_bytes());
+        let mut input = hash_commitments.as_bytes().to_vec();
+        input.extend_from_slice(A.compress().as_bytes());
+        input.extend_from_slice(S.compress().as_bytes());
+
         let mut y = [0u8; 32];
-        keccak.finalize(&mut y);
+        keccak_256(&input, &mut y);
         let y = Scalar::from_bytes_mod_order(y);
 
-        let mut keccak = Keccak::v256();
-        keccak.update(y.as_bytes());
         let mut z = [0u8; 32];
-        keccak.finalize(&mut z);
-
-        // TODO: Must check if scalars are equal to zero and abort if so (or retry)
-
+        keccak_256(y.as_bytes(), &mut z);
         let z = Scalar::from_bytes_mod_order(z);
+        // TODO: Must check if scalars are equal to zero and abort if so (or retry)
 
         let bit_challenge = BitChallenge { y, z };
 
@@ -141,13 +138,13 @@ impl<'a> DealerAwaitingPolyCommitments<'a> {
         let T_1: EdwardsPoint = poly_commitments.iter().map(|pc| pc.T_1_j).sum();
         let T_2: EdwardsPoint = poly_commitments.iter().map(|pc| pc.T_2_j).sum();
 
-        let mut keccak = Keccak::v256();
-        keccak.update(self.bit_challenge.z.as_bytes());
-        keccak.update(self.bit_challenge.z.as_bytes());
-        keccak.update(T_1.compress().as_bytes());
-        keccak.update(T_2.compress().as_bytes());
+        let mut input = self.bit_challenge.z.as_bytes().to_vec();
+        input.extend_from_slice(self.bit_challenge.z.as_bytes());
+        input.extend_from_slice(T_1.compress().as_bytes());
+        input.extend_from_slice(T_2.compress().as_bytes());
+
         let mut x = [0u8; 32];
-        keccak.finalize(&mut x);
+        keccak_256(&input, &mut x);
         let x = Scalar::from_bytes_mod_order(x);
 
         let poly_challenge = PolyChallenge { x };
@@ -212,14 +209,14 @@ impl<'a> DealerAwaitingProofShares<'a> {
         let e_blinding: Scalar = proof_shares.iter().map(|ps| ps.e_blinding).sum();
 
         // Get a challenge value to combine statements for the IPP
-        let mut keccak = Keccak::v256();
-        keccak.update(self.poly_challenge.x.as_bytes());
-        keccak.update(self.poly_challenge.x.as_bytes());
-        keccak.update(t_x_blinding.as_bytes());
-        keccak.update(e_blinding.as_bytes());
-        keccak.update(t_x.as_bytes());
+        let mut input = self.poly_challenge.x.as_bytes().to_vec();
+        input.extend_from_slice(self.poly_challenge.x.as_bytes());
+        input.extend_from_slice(t_x_blinding.as_bytes());
+        input.extend_from_slice(e_blinding.as_bytes());
+        input.extend_from_slice(t_x.as_bytes());
+
         let mut w = [0u8; 32];
-        keccak.finalize(&mut w);
+        keccak_256(&input, &mut w);
         // TODO: Monero checks if w is equal to zero and aborts if so (bulletproof.cc:720)
         let w = Scalar::from_bytes_mod_order(w);
         let Q = w * self.pc_gens.B;

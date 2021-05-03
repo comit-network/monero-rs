@@ -6,7 +6,7 @@ use core::iter;
 use curve25519_dalek::edwards::{CompressedEdwardsY, EdwardsPoint};
 use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::traits::VartimeMultiscalarMul;
-use tiny_keccak::{Hasher, Keccak};
+use keccak_hash::keccak_256;
 
 use crate::bulletproof::ProofError;
 use crate::bulletproof::INV_EIGHT;
@@ -116,13 +116,12 @@ impl InnerProductProof {
             L_vec.push(L);
             R_vec.push(R);
 
-            let mut keccak = Keccak::v256();
-            keccak.update(w.as_bytes());
-            keccak.update(L.as_bytes());
-            keccak.update(R.as_bytes());
+            let mut input = w.as_bytes().to_vec();
+            input.extend_from_slice(L.as_bytes());
+            input.extend_from_slice(R.as_bytes());
 
             let mut u = [0u8; 32];
-            keccak.finalize(&mut u);
+            keccak_256(&input, &mut u);
             let u = Scalar::from_bytes_mod_order(u);
             let u_inv = u.invert();
 
@@ -178,13 +177,12 @@ impl InnerProductProof {
             L_vec.push(L);
             R_vec.push(R);
 
-            let mut keccak = Keccak::v256();
-            keccak.update(prev_u.as_bytes());
-            keccak.update(L.as_bytes());
-            keccak.update(R.as_bytes());
+            let mut input = prev_u.as_bytes().to_vec();
+            input.extend_from_slice(L.as_bytes());
+            input.extend_from_slice(R.as_bytes());
 
             let mut u = [0u8; 32];
-            keccak.finalize(&mut u);
+            keccak_256(&input, &mut u);
             let u = Scalar::from_bytes_mod_order(u);
             let u_inv = u.invert();
 
@@ -237,13 +235,12 @@ impl InnerProductProof {
         let mut prev_u = w;
         let mut challenges = Vec::with_capacity(lg_n);
         for (L, R) in self.L_vec.iter().zip(self.R_vec.iter()) {
-            let mut keccak = Keccak::v256();
-            keccak.update(prev_u.as_bytes());
-            keccak.update(L.as_bytes());
-            keccak.update(R.as_bytes());
+            let mut input = prev_u.as_bytes().to_vec();
+            input.extend_from_slice(L.as_bytes());
+            input.extend_from_slice(R.as_bytes());
 
             let mut u = [0u8; 32];
-            keccak.finalize(&mut u);
+            keccak_256(&input, &mut u);
             let u = Scalar::from_bytes_mod_order(u);
 
             challenges.push(u);

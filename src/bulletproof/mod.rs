@@ -10,8 +10,8 @@ use core::iter;
 use curve25519_dalek::edwards::{CompressedEdwardsY, EdwardsPoint};
 use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::traits::{IsIdentity, VartimeMultiscalarMul};
+use keccak_hash::keccak_256;
 use rand::{CryptoRng, RngCore};
-use tiny_keccak::{Hasher, Keccak};
 
 use inner_product_proof::InnerProductProof;
 
@@ -364,30 +364,28 @@ impl RangeProof {
             return Err(ProofError::InvalidGeneratorsLength);
         }
 
-        let mut keccak = Keccak::v256();
+        let mut input = vec![];
         for commitment in value_commitments.iter() {
-            keccak.update(commitment.as_bytes());
+            input.extend_from_slice(commitment.as_bytes());
         }
         let mut hash_commitments = [0u8; 32];
-        keccak.finalize(&mut hash_commitments);
+        keccak_256(&input, &mut hash_commitments);
         let hash_commitments = Scalar::from_bytes_mod_order(hash_commitments);
 
-        let mut keccak = Keccak::v256();
-        keccak.update(hash_commitments.as_bytes());
-        keccak.update(self.A.as_bytes());
-        keccak.update(self.S.as_bytes());
+        let mut input = hash_commitments.as_bytes().to_vec();
+        input.extend_from_slice(self.A.as_bytes());
+        input.extend_from_slice(self.S.as_bytes());
+
         let mut y = [0u8; 32];
-        keccak.finalize(&mut y);
+        keccak_256(&input, &mut y);
         let y = Scalar::from_bytes_mod_order(y);
 
         if y == Scalar::zero() {
             return Err(ProofError::VerificationError);
         }
 
-        let mut keccak = Keccak::v256();
-        keccak.update(y.as_bytes());
         let mut z = [0u8; 32];
-        keccak.finalize(&mut z);
+        keccak_256(y.as_bytes(), &mut z);
 
         let z = Scalar::from_bytes_mod_order(z);
 
@@ -398,27 +396,27 @@ impl RangeProof {
         let zz = z * z;
         let minus_z = -z;
 
-        let mut keccak = Keccak::v256();
-        keccak.update(z.as_bytes());
-        keccak.update(z.as_bytes());
-        keccak.update(self.T_1.as_bytes());
-        keccak.update(self.T_2.as_bytes());
+        let mut input = z.as_bytes().to_vec();
+        input.extend_from_slice(z.as_bytes());
+        input.extend_from_slice(self.T_1.as_bytes());
+        input.extend_from_slice(self.T_2.as_bytes());
+
         let mut x = [0u8; 32];
-        keccak.finalize(&mut x);
+        keccak_256(&input, &mut x);
         let x = Scalar::from_bytes_mod_order(x);
 
         if x == Scalar::zero() {
             return Err(ProofError::VerificationError);
         }
 
-        let mut keccak = Keccak::v256();
-        keccak.update(x.as_bytes());
-        keccak.update(x.as_bytes());
-        keccak.update(self.t_x_blinding.as_bytes());
-        keccak.update(self.e_blinding.as_bytes());
-        keccak.update(self.t_x.as_bytes());
+        let mut input = x.as_bytes().to_vec();
+        input.extend_from_slice(x.as_bytes());
+        input.extend_from_slice(self.t_x_blinding.as_bytes());
+        input.extend_from_slice(self.e_blinding.as_bytes());
+        input.extend_from_slice(self.t_x.as_bytes());
+
         let mut w = [0u8; 32];
-        keccak.finalize(&mut w);
+        keccak_256(&input, &mut w);
         let w = Scalar::from_bytes_mod_order(w);
 
         if w == Scalar::zero() {

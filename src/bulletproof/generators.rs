@@ -7,7 +7,7 @@ use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::traits::MultiscalarMul;
 use hash_edwards_to_edwards::hash_to_point;
 use integer_encoding::VarInt;
-use tiny_keccak::{Hasher, Keccak};
+use keccak_hash::keccak_256;
 
 lazy_static::lazy_static! {
     /// Alternate generator of ed25519.
@@ -143,13 +143,12 @@ impl BulletproofGens {
     /// Equivalent to `get_exponent` in the Monero codebase. See:
     /// https://github.com/monero-project/monero/blob/release-v0.17/src/ringct/bulletproofs.cc#L101-L111
     fn generator(base: EdwardsPoint, index: usize) -> EdwardsPoint {
-        let mut keccak = Keccak::v256();
-        keccak.update(base.compress().as_bytes());
-        keccak.update(b"bulletproof");
-        keccak.update(&index.encode_var_vec());
+        let mut input = base.compress().as_bytes().to_vec();
+        input.extend_from_slice(b"bulletproof");
+        input.extend_from_slice(&index.encode_var_vec());
 
         let mut output = [0u8; 32];
-        keccak.finalize(&mut output);
+        keccak_256(&input, &mut output);
 
         hash_to_point(&output)
     }
