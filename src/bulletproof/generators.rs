@@ -6,6 +6,7 @@ use curve25519_dalek::edwards::{CompressedEdwardsY, EdwardsPoint};
 use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::traits::MultiscalarMul;
 use hash_edwards_to_edwards::hash_to_point;
+use integer_encoding::VarInt;
 use tiny_keccak::{Hasher, Keccak};
 
 lazy_static::lazy_static! {
@@ -83,11 +84,6 @@ impl BulletproofGens {
     /// * `party_capacity` is the maximum number of parties that can
     ///    produce an aggregated proof.
     pub fn new(gens_capacity: usize, party_capacity: usize) -> Self {
-        fn varint_to_bytes(n: usize) -> Vec<u8> {
-            use integer_encoding::VarInt;
-            n.encode_var_vec()
-        }
-
         let mut gens = BulletproofGens {
             gens_capacity,
             party_capacity,
@@ -98,40 +94,16 @@ impl BulletproofGens {
         let max_index = party_capacity * gens_capacity;
         for i in 0..max_index {
             if i % gens_capacity == 0 {
+                gens.G_vec.push(Vec::new());
                 gens.H_vec.push(Vec::new());
             }
 
-            let mut keccak = Keccak::v256();
-            keccak.update(H.compress().as_bytes());
-            keccak.update(b"bulletproof");
-            keccak.update(&varint_to_bytes(i * 2));
-
-            let mut output = [0u8; 32];
-            keccak.finalize(&mut output);
-
-            let edwards_point = hash_to_point(&output);
-
-            let last_index = gens.H_vec.len() - 1;
-            gens.H_vec[last_index].push(edwards_point)
-        }
-
-        for i in 0..max_index {
-            if i % gens_capacity == 0 {
-                gens.G_vec.push(Vec::new());
-            }
-
-            let mut keccak = Keccak::v256();
-            keccak.update(H.compress().as_bytes());
-            keccak.update(b"bulletproof");
-            keccak.update(&varint_to_bytes((i * 2) + 1));
-
-            let mut output = [0u8; 32];
-            keccak.finalize(&mut output);
-
-            let edwards_point = hash_to_point(&output);
+            let G_i = Self::generator(*H, (i * 2) + 1);
+            let H_i = Self::generator(*H, i * 2);
 
             let last_index = gens.G_vec.len() - 1;
-            gens.G_vec[last_index].push(edwards_point)
+            gens.H_vec[last_index].push(H_i);
+            gens.G_vec[last_index].push(G_i);
         }
 
         gens
@@ -166,6 +138,20 @@ impl BulletproofGens {
             party_idx: 0,
             gen_idx: 0,
         }
+    }
+
+    /// Equivalent to `get_exponent` in the Monero codebase. See:
+    /// https://github.com/monero-project/monero/blob/release-v0.17/src/ringct/bulletproofs.cc#L101-L111
+    fn generator(base: EdwardsPoint, index: usize) -> EdwardsPoint {
+        let mut keccak = Keccak::v256();
+        keccak.update(base.compress().as_bytes());
+        keccak.update(b"bulletproof");
+        keccak.update(&index.encode_var_vec());
+
+        let mut output = [0u8; 32];
+        keccak.finalize(&mut output);
+
+        hash_to_point(&output)
     }
 }
 
