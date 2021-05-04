@@ -68,13 +68,12 @@ use std::{fmt, io, ops};
 use curve25519_dalek::constants::ED25519_BASEPOINT_TABLE;
 use curve25519_dalek::edwards::{CompressedEdwardsY, EdwardsPoint};
 use curve25519_dalek::scalar::Scalar;
-
 use hex_literal::hex;
+use rand::{CryptoRng, RngCore};
+use thiserror::Error;
 
 use crate::consensus::encode::{self, Decodable, Encodable};
 use crate::cryptonote::hash;
-
-use thiserror::Error;
 
 #[cfg(feature = "serde_support")]
 use serde::{Deserialize, Serialize};
@@ -104,6 +103,12 @@ pub struct PrivateKey {
 }
 
 impl PrivateKey {
+    pub fn random<R: RngCore + CryptoRng>(rng: &mut R) -> Self {
+        Self {
+            scalar: Scalar::random(rng),
+        }
+    }
+
     /// Serialize the private key as bytes.
     pub fn as_bytes(&self) -> &[u8] {
         self.scalar.as_bytes()
