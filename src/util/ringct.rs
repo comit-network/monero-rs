@@ -13,9 +13,11 @@
 // copies or substantial portions of the Software.
 //
 
-//! RingCT primitive types
+//! Ring Confidential Transaction primitive types.
 //!
-//! Support for parsing RingCT signature in Monero transactions.
+//! Support for parsing Ring Confidential Transaction signature within [`Transaction`].
+//!
+//! [`Transaction`]: crate::blockdata::transaction::Transaction
 //!
 
 use std::{fmt, io};
@@ -30,7 +32,7 @@ use serde_big_array_unchecked_docs::*;
 
 use thiserror::Error;
 
-///Serde support for array's bigger than 32
+/// Serde support for array's bigger than 32 items.
 #[allow(missing_docs)]
 #[cfg(feature = "serde_support")]
 #[cfg_attr(docsrs, doc(cfg(feature = "serde_support")))]
@@ -39,20 +41,20 @@ pub mod serde_big_array_unchecked_docs {
     big_array! { BigArray; }
 }
 
-/// RingCT possible errors
+/// Ring Confidential Transaction potential errors.
 #[derive(Error, Debug, PartialEq)]
 pub enum Error {
-    /// Invalid RingCT type
-    #[error("Unknown RingCT type")]
+    /// Invalid RingCt type.
+    #[error("Unknown RingCt type")]
     UnknownRctType,
 }
 
 // ====================================================================
-/// Raw 32 bytes key
+/// Raw 32 bytes key.
 #[derive(Clone, Copy, PartialEq, Hash)]
 #[cfg_attr(feature = "serde_support", derive(Serialize, Deserialize))]
 pub struct Key {
-    /// The actual key
+    /// The actual key.
     pub key: [u8; 32],
 }
 
@@ -62,18 +64,16 @@ impl_consensus_encoding!(Key, key);
 
 impl From<[u8; 32]> for Key {
     fn from(key: [u8; 32]) -> Self {
-        Self {
-            key
-        }
+        Self { key }
     }
 }
 
 // ====================================================================
-/// Raw 64 bytes key
+/// Raw 64 bytes key.
 #[derive(Clone, Copy, PartialEq, Hash)]
 #[cfg_attr(feature = "serde_support", derive(Serialize, Deserialize))]
 pub struct Key64 {
-    /// The actual key
+    /// The actual key.
     #[cfg_attr(feature = "serde_support", serde(with = "BigArray"))]
     pub key: [u8; 64],
 }
@@ -84,19 +84,17 @@ impl_consensus_encoding!(Key64, key);
 
 impl From<[u8; 64]> for Key64 {
     fn from(key: [u8; 64]) -> Self {
-        Self {
-            key
-        }
+        Self { key }
     }
 }
 
 // ====================================================================
-/// Confidential transaction key
+/// Confidential transaction key.
 #[derive(Debug, Clone, Copy, PartialEq, Hash)]
 #[cfg_attr(feature = "serde_support", derive(Serialize, Deserialize))]
 pub struct CtKey {
     //pub dest: Key,
-    /// Mask
+    /// Mask.
     pub mask: Key,
 }
 
@@ -109,49 +107,48 @@ impl fmt::Display for CtKey {
 impl_consensus_encoding!(CtKey, mask);
 
 // ====================================================================
-/// Multisig
+/// Multisig.
 #[derive(Debug)]
 #[allow(non_snake_case)]
-pub struct MultisigKLRki {
-    /// K value
+pub struct MultisigKlrki {
+    /// K value.
     pub K: Key,
-    /// L value
+    /// L value.
     pub L: Key,
-    /// R value
+    /// R value.
     pub R: Key,
-    /// ki value
+    /// ki value.
     pub ki: Key,
 }
 
-impl_consensus_encoding!(MultisigKLRki, K, L, R, ki);
+impl_consensus_encoding!(MultisigKlrki, K, L, R, ki);
 
 // ====================================================================
-/// Vector of multisig output keys
+/// Vector of multisig output keys.
 #[derive(Debug)]
 pub struct MultisigOut {
-    /// Vector of keys
+    /// Vector of keys.
     pub c: Vec<Key>,
 }
 
 impl_consensus_encoding!(MultisigOut, c);
 
 // ====================================================================
-/// Diffie-Hellman info
-/// Mask and amount for transaction before Bulletproof2 and only 8 bytes hash for the amount in
-/// Bulletproof2 type
+/// Diffie-Hellman info, mask and amount for transaction before `Bulletproof2` and only 8-bytes
+/// hash for the amount in `Bulletproof2` type.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde_support", derive(Serialize, Deserialize))]
 pub enum EcdhInfo {
-    /// Standard format, before bp2
+    /// Standard format, before `Bulletproof2`.
     Standard {
-        /// Mask value
+        /// Mask value.
         mask: Key,
-        /// Amount value
+        /// Amount value.
         amount: Key,
     },
-    /// Bulletproof format
+    /// Bulletproof format.
     Bulletproof {
-        /// Amount value
+        /// Amount value.
         amount: hash::Hash8,
     },
 }
@@ -174,7 +171,7 @@ impl fmt::Display for EcdhInfo {
 }
 
 impl EcdhInfo {
-    /// Decode Diffie-Hellman info given the RingCT type
+    /// Decode Diffie-Hellman info given the RingCt type.
     fn consensus_decode<D: io::Read>(
         d: &mut D,
         rct_type: RctType,
@@ -186,7 +183,7 @@ impl EcdhInfo {
                     amount: Decodable::consensus_decode(d)?,
                 })
             }
-            RctType::Bulletproof2 | RctType::CLSAG => Ok(EcdhInfo::Bulletproof {
+            RctType::Bulletproof2 | RctType::Clsag => Ok(EcdhInfo::Bulletproof {
                 amount: Decodable::consensus_decode(d)?,
             }),
         }
@@ -210,28 +207,28 @@ impl Encodable for EcdhInfo {
 }
 
 // ====================================================================
-/// Borromean signature for range commitment
+/// Borromean signature for range commitment.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde_support", derive(Serialize, Deserialize))]
 pub struct BoroSig {
-    /// s0 value
+    /// s0 value.
     pub s0: Key64,
-    /// s1 value
+    /// s1 value.
     pub s1: Key64,
-    /// ee value
+    /// ee value.
     pub ee: Key,
 }
 
 impl_consensus_encoding!(BoroSig, s0, s1, ee);
 
 // ====================================================================
-/// Contains the necessary keys to represent MLSAG signature
+/// Contains the necessary keys to represent Mlsag signature.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde_support", derive(Serialize, Deserialize))]
 pub struct MgSig {
-    /// Matrice of keys
+    /// Matrice of keys.
     pub ss: Vec<Vec<Key>>,
-    /// cc value
+    /// cc value.
     pub cc: Key,
 }
 
@@ -247,20 +244,20 @@ impl Encodable for MgSig {
 }
 
 // ====================================================================
-/// CLSAG signature
+/// Clsag signature.
 #[derive(Debug, Clone)]
 #[allow(non_snake_case)]
 #[cfg_attr(feature = "serde_support", derive(Serialize, Deserialize))]
-pub struct CLSAG {
-    /// scalars
+pub struct Clsag {
+    /// scalars.
     pub s: Vec<Key>,
-    /// c1 value
+    /// c1 value.
     pub c1: Key,
-    /// commitment key image
+    /// commitment key image.
     pub D: Key,
 }
 
-impl Encodable for CLSAG {
+impl Encodable for Clsag {
     fn consensus_encode<S: io::Write>(&self, s: &mut S) -> Result<usize, io::Error> {
         let mut len = 0;
         // Encode the vector without prefix lenght
@@ -272,7 +269,7 @@ impl Encodable for CLSAG {
 }
 
 // ====================================================================
-/// Range signature for range commitment
+/// Range signature for range commitment.
 #[derive(Debug, Clone)]
 #[allow(non_snake_case)]
 #[cfg_attr(feature = "serde_support", derive(Serialize, Deserialize))]
@@ -286,51 +283,51 @@ pub struct RangeSig {
 impl_consensus_encoding!(RangeSig, asig, Ci);
 
 // ====================================================================
-/// Bulletproof format
+/// Bulletproof format.
 #[derive(Debug, Clone)]
 #[allow(non_snake_case)]
 #[cfg_attr(feature = "serde_support", derive(Serialize, Deserialize))]
 pub struct Bulletproof {
-    /// A value
+    /// A value.
     pub A: Key,
-    /// S value
+    /// S value.
     pub S: Key,
-    /// T1 value
+    /// T1 value.
     pub T1: Key,
-    /// T2 value
+    /// T2 value.
     pub T2: Key,
-    /// taux value
+    /// taux value.
     pub taux: Key,
-    /// mu value
+    /// mu value.
     pub mu: Key,
-    /// L value
+    /// L value.
     pub L: Vec<Key>,
-    /// R value
+    /// R value.
     pub R: Vec<Key>,
-    /// a value
+    /// a value.
     pub a: Key,
-    /// b value
+    /// b value.
     pub b: Key,
-    /// t value
+    /// t value.
     pub t: Key,
 }
 
 impl_consensus_encoding!(Bulletproof, A, S, T1, T2, taux, mu, L, R, a, b, t);
 
 // ====================================================================
-/// RingCT base signature format
+/// RingCt base signature format.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde_support", derive(Serialize, Deserialize))]
 pub struct RctSigBase {
-    /// The RingCT type of signatures
+    /// The RingCt type of signatures.
     pub rct_type: RctType,
-    /// Transaction fee
+    /// Transaction fee.
     pub txn_fee: VarInt,
-    /// Pseudo outs key vector
+    /// Pseudo outs key vector.
     pub pseudo_outs: Vec<Key>,
-    /// Ecdh info vector
+    /// Ecdh info vector.
     pub ecdh_info: Vec<EcdhInfo>,
-    /// Out pk vector
+    /// Out pk vector.
     pub out_pk: Vec<CtKey>,
 }
 
@@ -352,7 +349,7 @@ impl fmt::Display for RctSigBase {
 }
 
 impl RctSigBase {
-    /// Decode a RingCT base signature given the number of inputs and outputs of the transaction
+    /// Decode a RingCt base signature given the number of inputs and outputs of the transaction.
     pub fn consensus_decode<D: io::Read>(
         d: &mut D,
         inputs: usize,
@@ -371,7 +368,7 @@ impl RctSigBase {
             | RctType::Simple
             | RctType::Bulletproof
             | RctType::Bulletproof2
-            | RctType::CLSAG => {
+            | RctType::Clsag => {
                 let mut pseudo_outs: Vec<Key> = vec![];
                 // TxnFee
                 let txn_fee: VarInt = Decodable::consensus_decode(d)?;
@@ -408,7 +405,7 @@ impl Encodable for RctSigBase {
             | RctType::Simple
             | RctType::Bulletproof
             | RctType::Bulletproof2
-            | RctType::CLSAG => {
+            | RctType::Clsag => {
                 len += self.txn_fee.consensus_encode(s)?;
                 if self.rct_type == RctType::Simple {
                     len += encode_sized_vec!(self.pseudo_outs, s);
@@ -428,22 +425,22 @@ impl hash::Hashable for RctSigBase {
 }
 
 // ====================================================================
-/// RingCT types
+/// Types of Ring Confidential Transaction signatures.
 #[derive(Debug, PartialEq, Clone, Copy)]
 #[cfg_attr(feature = "serde_support", derive(Serialize, Deserialize))]
 pub enum RctType {
-    /// Null type
+    /// Null type.
     Null,
-    /// Full type
+    /// Full type.
     Full,
-    /// Simple type
+    /// Simple type.
     Simple,
-    /// First Bulletproof type
+    /// First Bulletproof type.
     Bulletproof,
-    /// Bulletproof2 type
+    /// Bulletproof2 type.
     Bulletproof2,
-    /// CLSAG Ring signatures, used in the current network
-    CLSAG,
+    /// Clsag Ring signatures, used in the current network.
+    Clsag,
 }
 
 impl fmt::Display for RctType {
@@ -454,18 +451,18 @@ impl fmt::Display for RctType {
             RctType::Simple => "Simple",
             RctType::Bulletproof => "Bulletproof",
             RctType::Bulletproof2 => "Bulletproof2",
-            RctType::CLSAG => "CLSAG",
+            RctType::Clsag => "Clsag",
         };
         write!(fmt, "{}", rct_type)
     }
 }
 
 impl RctType {
-    /// Return if the format use one of the bulletproof format
+    /// Return if the format use one of the bulletproof format.
     pub fn is_rct_bp(self) -> bool {
         matches!(
             self,
-            RctType::Bulletproof | RctType::Bulletproof2 | RctType::CLSAG
+            RctType::Bulletproof | RctType::Bulletproof2 | RctType::Clsag
         )
     }
 }
@@ -479,7 +476,7 @@ impl Decodable for RctType {
             2 => Ok(RctType::Simple),
             3 => Ok(RctType::Bulletproof),
             4 => Ok(RctType::Bulletproof2),
-            5 => Ok(RctType::CLSAG),
+            5 => Ok(RctType::Clsag),
             _ => Err(Error::UnknownRctType.into()),
         }
     }
@@ -493,32 +490,32 @@ impl Encodable for RctType {
             RctType::Simple => 2u8.consensus_encode(s),
             RctType::Bulletproof => 3u8.consensus_encode(s),
             RctType::Bulletproof2 => 4u8.consensus_encode(s),
-            RctType::CLSAG => 5u8.consensus_encode(s),
+            RctType::Clsag => 5u8.consensus_encode(s),
         }
     }
 }
 
 // ====================================================================
-/// Prunable part of RingCT signature format
+/// Prunable part of RingCt signature format.
 #[derive(Debug, Clone)]
 #[allow(non_snake_case)]
 #[cfg_attr(feature = "serde_support", derive(Serialize, Deserialize))]
 pub struct RctSigPrunable {
-    /// Range signatures
+    /// Range signatures.
     pub range_sigs: Vec<RangeSig>,
-    /// Bulletproofs
+    /// Bulletproofs.
     pub bulletproofs: Vec<Bulletproof>,
-    /// MSLAG signatures, simple rct has N, full has 1
+    /// MSLAG signatures, simple rct has N, full has 1.
     pub MGs: Vec<MgSig>,
-    /// CSLAG signatures
-    pub CLSAGs: Vec<CLSAG>,
-    /// Pseudo out vector
+    /// CSLAG signatures.
+    pub Clsags: Vec<Clsag>,
+    /// Pseudo out vector.
     pub pseudo_outs: Vec<Key>,
 }
 
 impl RctSigPrunable {
-    /// Decode a prunable RingCT signature given the number of inputs and outputs in the
-    /// transaction, the RingCT type and the number of mixins
+    /// Decode a prunable RingCt signature given the number of inputs and outputs in the
+    /// transaction, the RingCt type and the number of mixins.
     #[allow(non_snake_case)]
     pub fn consensus_decode<D: io::Read>(
         d: &mut D,
@@ -533,12 +530,12 @@ impl RctSigPrunable {
             | RctType::Simple
             | RctType::Bulletproof
             | RctType::Bulletproof2
-            | RctType::CLSAG => {
+            | RctType::Clsag => {
                 let mut bulletproofs: Vec<Bulletproof> = vec![];
                 let mut range_sigs: Vec<RangeSig> = vec![];
                 if rct_type.is_rct_bp() {
                     match rct_type {
-                        RctType::Bulletproof2 | RctType::CLSAG => {
+                        RctType::Bulletproof2 | RctType::Clsag => {
                             bulletproofs = Decodable::consensus_decode(d)?;
                         }
                         _ => {
@@ -550,11 +547,11 @@ impl RctSigPrunable {
                     range_sigs = decode_sized_vec!(outputs, d);
                 }
 
-                let mut CLSAGs: Vec<CLSAG> = vec![];
+                let mut Clsags: Vec<Clsag> = vec![];
                 let mut MGs: Vec<MgSig> = vec![];
 
                 match rct_type {
-                    RctType::CLSAG => {
+                    RctType::Clsag => {
                         for _ in 0..inputs {
                             let mut s: Vec<Key> = vec![];
                             for _ in 0..=mixin {
@@ -563,7 +560,7 @@ impl RctSigPrunable {
                             }
                             let c1 = Decodable::consensus_decode(d)?;
                             let D = Decodable::consensus_decode(d)?;
-                            CLSAGs.push(CLSAG { s, c1, D });
+                            Clsags.push(Clsag { s, c1, D });
                         }
                     }
                     _ => {
@@ -586,7 +583,7 @@ impl RctSigPrunable {
 
                 let mut pseudo_outs: Vec<Key> = vec![];
                 match rct_type {
-                    RctType::Bulletproof | RctType::Bulletproof2 | RctType::CLSAG => {
+                    RctType::Bulletproof | RctType::Bulletproof2 | RctType::Clsag => {
                         pseudo_outs = decode_sized_vec!(inputs, d);
                     }
                     _ => (),
@@ -596,14 +593,14 @@ impl RctSigPrunable {
                     range_sigs,
                     bulletproofs,
                     MGs,
-                    CLSAGs,
+                    Clsags,
                     pseudo_outs,
                 }))
             }
         }
     }
 
-    /// Encode the prunable RingCT signature part given the RingCT type of the transaction
+    /// Encode the prunable RingCt signature part given the RingCt type of the transaction.
     pub fn consensus_encode<S: io::Write>(
         &self,
         s: &mut S,
@@ -615,11 +612,11 @@ impl RctSigPrunable {
             | RctType::Simple
             | RctType::Bulletproof
             | RctType::Bulletproof2
-            | RctType::CLSAG => {
+            | RctType::Clsag => {
                 let mut len = 0;
                 if rct_type.is_rct_bp() {
                     match rct_type {
-                        RctType::Bulletproof2 | RctType::CLSAG => {
+                        RctType::Bulletproof2 | RctType::Clsag => {
                             len += self.bulletproofs.consensus_encode(s)?;
                         }
                         _ => {
@@ -633,12 +630,12 @@ impl RctSigPrunable {
                 }
 
                 match rct_type {
-                    RctType::CLSAG => len += encode_sized_vec!(self.CLSAGs, s),
+                    RctType::Clsag => len += encode_sized_vec!(self.Clsags, s),
                     _ => len += encode_sized_vec!(self.MGs, s),
                 }
 
                 match rct_type {
-                    RctType::Bulletproof | RctType::Bulletproof2 | RctType::CLSAG => {
+                    RctType::Bulletproof | RctType::Bulletproof2 | RctType::Clsag => {
                         len += encode_sized_vec!(self.pseudo_outs, s);
                     }
                     _ => (),
@@ -650,13 +647,13 @@ impl RctSigPrunable {
 }
 
 // ====================================================================
-/// A RingCT signature
+/// A RingCt signature.
 #[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "serde_support", derive(Serialize, Deserialize))]
 pub struct RctSig {
-    /// The base part
+    /// The base part.
     pub sig: Option<RctSigBase>,
-    /// The prunable part
+    /// The prunable part.
     pub p: Option<RctSigPrunable>,
 }
 
@@ -671,13 +668,13 @@ impl fmt::Display for RctSig {
 }
 
 // ====================================================================
-/// A raw signature
+/// A raw signature.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde_support", derive(Serialize, Deserialize))]
 pub struct Signature {
-    /// c value
+    /// c value.
     pub c: Key,
-    /// r value
+    /// r value.
     pub r: Key,
 }
 
