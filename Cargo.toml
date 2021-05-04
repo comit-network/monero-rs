@@ -2,7 +2,7 @@
 name = "monero"
 description = "Rust Monero Library."
 keywords = ["monero"]
-version = "0.11.2"
+version = "0.12.0"
 authors = ["h4sh3d <h4sh3d@protonmail.com>"]
 license = "MIT"
 homepage = "https://github.com/monero-rs/monero-rs"
@@ -47,9 +47,6 @@ default-features = false
 [dev-dependencies]
 rand = { version = "0.7", features = ["std"] }
 serde_json = "1"
-
-[badges]
-travis-ci = { repository = "monero-rs/monero-rs", branch = "master" }
 
 [package.metadata.docs.rs]
 all-features = true

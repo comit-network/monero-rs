@@ -19,7 +19,8 @@
 //! designed for Rust programs built to work with the Monero ecosystem.
 //!
 //! The library currently focuses on manipulating types such as addresses, transactions, blocks and
-//! public keys, but do **not** implementat transaction signing.
+//! public keys, but do **NOT** implementat transaction signing. There is no immediate plan to add
+//! such support.
 //!
 //! ## Default features
 //!
@@ -32,8 +33,8 @@
 //! ## `strict_encoding` Support
 //!
 //! The `strict_encoding_support` feature enables `StrictEncode` and `StrictDecode` trait
-//! implementation for a few types that implements [consensus::Encodable] and
-//! [consensus::Decodable].
+//! implementation for a few types that implements [`consensus::Encodable`] and
+//! [`consensus::Decodable`].
 //!
 //! `strict_encoding` is a wrapper that allows multiple consensus encoding to work under the same
 //! interface, i.e. `StrictEncode` and `StrictDecode`.
@@ -69,13 +70,24 @@ pub mod cryptonote;
 pub mod network;
 pub mod util;
 
+pub use blockdata::block::Block;
+pub use blockdata::block::BlockHeader;
 pub use blockdata::transaction::OwnedTxOut;
 pub use blockdata::transaction::Transaction;
+pub use blockdata::transaction::TransactionPrefix;
 pub use blockdata::transaction::TxIn;
 pub use blockdata::transaction::TxOut;
+pub use consensus::encode::VarInt;
+pub use cryptonote::hash::Hash;
 pub use bulletproof::{make_bulletproof, verify_bulletproof};
 pub use network::Network;
 pub use util::address::Address;
+pub use util::address::AddressType;
+pub use util::amount::Amount;
+pub use util::amount::Denomination;
+pub use util::amount::SignedAmount;
+pub use util::key::KeyPair;
 pub use util::key::PrivateKey;
 pub use util::key::PublicKey;
+pub use util::key::ViewPair;
 pub use util::Error;

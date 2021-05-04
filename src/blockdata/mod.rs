@@ -13,15 +13,11 @@
 // copies or substantial portions of the Software.
 //
 
-//! Blockdata consensus structures
+//! Blockdata consensus structures.
 //!
-//! This module defines structures and functions for storing transactions which
-//! make up the Monero system. Primites like Monero transactions and blocks are
-//! under this module.
+//! This module defines structures and functions for manipulating transactions which constitute the
+//! Monero blockchain. Primites like Monero transactions and blocks are under this module.
 //!
 
 pub mod block;
 pub mod transaction;
-
-pub use block::Block;
-pub use transaction::{Transaction, TransactionPrefix, TxIn, TxOut};
