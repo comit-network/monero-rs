@@ -17,7 +17,7 @@ use rand::{CryptoRng, RngCore};
 use crate::bulletproof::generators::{BulletproofGens, PedersenGens};
 use crate::bulletproof::messages::*;
 use crate::bulletproof::util;
-use crate::bulletproof::MPCError;
+use crate::bulletproof::MpcError;
 use crate::bulletproof::INV_EIGHT;
 
 /// Used to construct a party for the aggregated rangeproof MPC
@@ -27,22 +27,22 @@ pub struct Party {}
 impl Party {
     /// Constructs a `PartyAwaitingPosition` with the given rangeproof
     /// parameters.
-    pub fn new<'a>(
+    pub fn create<'a>(
         bp_gens: &'a BulletproofGens,
         pc_gens: &'a PedersenGens,
         v: u64,
         v_blinding: Scalar,
         n: usize,
-    ) -> Result<PartyAwaitingPosition<'a>, MPCError> {
+    ) -> Result<PartyAwaitingPosition<'a>, MpcError> {
         if !(n == 8 || n == 16 || n == 32 || n == 64) {
-            return Err(MPCError::InvalidBitsize);
+            return Err(MpcError::InvalidBitsize);
         }
         if bp_gens.gens_capacity < n {
-            return Err(MPCError::InvalidGeneratorsLength);
+            return Err(MpcError::InvalidGeneratorsLength);
         }
 
         let v_8 = Scalar::from(v) * *INV_EIGHT;
-        let v_blinding_8 = Scalar::from(v_blinding) * *INV_EIGHT;
+        let v_blinding_8 = v_blinding * *INV_EIGHT;
         let V = pc_gens.commit(v_8, v_blinding_8).compress();
 
         Ok(PartyAwaitingPosition {
@@ -74,7 +74,7 @@ impl<'a> PartyAwaitingPosition<'a> {
     pub fn assign_position(
         self,
         j: usize,
-    ) -> Result<(PartyAwaitingBitChallenge<'a>, BitCommitment), MPCError> {
+    ) -> Result<(PartyAwaitingBitChallenge<'a>, BitCommitment), MpcError> {
         self.assign_position_with_rng(j, &mut rand::thread_rng())
     }
 
@@ -84,9 +84,9 @@ impl<'a> PartyAwaitingPosition<'a> {
         self,
         j: usize,
         rng: &mut T,
-    ) -> Result<(PartyAwaitingBitChallenge<'a>, BitCommitment), MPCError> {
+    ) -> Result<(PartyAwaitingBitChallenge<'a>, BitCommitment), MpcError> {
         if self.bp_gens.party_capacity <= j {
-            return Err(MPCError::InvalidGeneratorsLength);
+            return Err(MpcError::InvalidGeneratorsLength);
         }
 
         let bp_share = self.bp_gens.share(j);
@@ -97,15 +97,13 @@ impl<'a> PartyAwaitingPosition<'a> {
         let mut A = self.pc_gens.B_blinding * a_blinding * *INV_EIGHT;
 
         use subtle::{Choice, ConditionallySelectable};
-        let mut i = 0;
-        for (G_i, H_i) in bp_share.G(self.n).zip(bp_share.H(self.n)) {
+        for (i, (G_i, H_i)) in bp_share.G(self.n).zip(bp_share.H(self.n)).enumerate() {
             // If v_i = 0, we add a_L[i] * G[i] + a_R[i] * H[i] = - H[i]
             // If v_i = 1, we add a_L[i] * G[i] + a_R[i] * H[i] =   G[i]
             let v_i = Choice::from(((self.v >> i) & 1) as u8);
             let mut point = -H_i;
             point.conditional_assign(G_i, v_i);
             A += point * *INV_EIGHT;
-            i += 1;
         }
 
         let s_blinding = Scalar::random(rng);
@@ -279,11 +277,11 @@ pub struct PartyAwaitingPolyChallenge {
 impl PartyAwaitingPolyChallenge {
     /// Receive a [`PolyChallenge`] from the dealer and compute the
     /// party's proof share.
-    pub fn apply_challenge(self, pc: &PolyChallenge) -> Result<ProofShare, MPCError> {
+    pub fn apply_challenge(self, pc: &PolyChallenge) -> Result<ProofShare, MpcError> {
         // Prevent a malicious dealer from annihilating the blinding
         // factors by supplying a zero challenge.
         if pc.x == Scalar::zero() {
-            return Err(MPCError::MaliciousDealer);
+            return Err(MpcError::MaliciousDealer);
         }
 
         let t_blinding_poly = util::Poly2(
@@ -294,7 +292,7 @@ impl PartyAwaitingPolyChallenge {
 
         let t_x = self.t_poly.eval(pc.x);
         let t_x_blinding = t_blinding_poly.eval(pc.x);
-        let e_blinding = self.a_blinding + self.s_blinding * &pc.x;
+        let e_blinding = self.a_blinding + self.s_blinding * pc.x;
         let l_vec = self.l_poly.eval(pc.x);
         let r_vec = self.r_poly.eval(pc.x);
 
