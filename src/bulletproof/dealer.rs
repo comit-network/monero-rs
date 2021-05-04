@@ -12,7 +12,7 @@ use crate::bulletproof::generators::{BulletproofGens, PedersenGens};
 use crate::bulletproof::inner_product_proof;
 use crate::bulletproof::messages::*;
 use crate::bulletproof::util;
-use crate::bulletproof::MPCError;
+use crate::bulletproof::MpcError;
 use crate::bulletproof::RangeProof;
 
 /// Used to construct a dealer for the aggregated rangeproof MPC protocol.
@@ -20,23 +20,23 @@ pub(crate) struct Dealer;
 
 impl Dealer {
     /// Creates a new dealer coordinating `m` parties proving `n`-bit ranges.
-    pub fn new<'a>(
+    pub fn create<'a>(
         bp_gens: &'a BulletproofGens,
         pc_gens: &'a PedersenGens,
         n: usize,
         m: usize,
-    ) -> Result<DealerAwaitingBitCommitments<'a>, MPCError> {
+    ) -> Result<DealerAwaitingBitCommitments<'a>, MpcError> {
         if !(n == 8 || n == 16 || n == 32 || n == 64) {
-            return Err(MPCError::InvalidBitsize);
+            return Err(MpcError::InvalidBitsize);
         }
         if !m.is_power_of_two() {
-            return Err(MPCError::InvalidAggregation);
+            return Err(MpcError::InvalidAggregation);
         }
         if bp_gens.gens_capacity < n {
-            return Err(MPCError::InvalidGeneratorsLength);
+            return Err(MpcError::InvalidGeneratorsLength);
         }
         if bp_gens.party_capacity < m {
-            return Err(MPCError::InvalidGeneratorsLength);
+            return Err(MpcError::InvalidGeneratorsLength);
         }
 
         Ok(DealerAwaitingBitCommitments {
@@ -61,9 +61,9 @@ impl<'a> DealerAwaitingBitCommitments<'a> {
     pub fn receive_bit_commitments(
         self,
         bit_commitments: Vec<BitCommitment>,
-    ) -> Result<(DealerAwaitingPolyCommitments<'a>, BitChallenge), MPCError> {
+    ) -> Result<(DealerAwaitingPolyCommitments<'a>, BitChallenge), MpcError> {
         if self.m != bit_commitments.len() {
-            return Err(MPCError::WrongNumBitCommitments);
+            return Err(MpcError::WrongNumBitCommitments);
         }
 
         // Commit aggregated A_j, S_j
@@ -129,9 +129,9 @@ impl<'a> DealerAwaitingPolyCommitments<'a> {
     pub fn receive_poly_commitments(
         self,
         poly_commitments: Vec<PolyCommitment>,
-    ) -> Result<(DealerAwaitingProofShares<'a>, PolyChallenge), MPCError> {
+    ) -> Result<(DealerAwaitingProofShares<'a>, PolyChallenge), MpcError> {
         if self.m != poly_commitments.len() {
-            return Err(MPCError::WrongNumPolyCommitments);
+            return Err(MpcError::WrongNumPolyCommitments);
         }
 
         // Commit sums of T_1_j's and T_2_j's
@@ -185,9 +185,9 @@ pub struct DealerAwaitingProofShares<'a> {
 
 impl<'a> DealerAwaitingProofShares<'a> {
     /// Assembles proof shares into an `RangeProof`.
-    fn assemble_shares(&mut self, proof_shares: &[ProofShare]) -> Result<RangeProof, MPCError> {
+    fn assemble_shares(&mut self, proof_shares: &[ProofShare]) -> Result<RangeProof, MpcError> {
         if self.m != proof_shares.len() {
-            return Err(MPCError::WrongNumProofShares);
+            return Err(MpcError::WrongNumProofShares);
         }
 
         // Validate lengths for each share
@@ -200,8 +200,8 @@ impl<'a> DealerAwaitingProofShares<'a> {
                 });
         }
 
-        if bad_shares.len() > 0 {
-            return Err(MPCError::MalformedProofShares { bad_shares });
+        if !bad_shares.is_empty() {
+            return Err(MpcError::MalformedProofShares { bad_shares });
         }
 
         let t_x: Scalar = proof_shares.iter().map(|ps| ps.t_x).sum();
@@ -270,7 +270,7 @@ impl<'a> DealerAwaitingProofShares<'a> {
     pub fn receive_trusted_shares(
         mut self,
         proof_shares: &[ProofShare],
-    ) -> Result<RangeProof, MPCError> {
+    ) -> Result<RangeProof, MpcError> {
         self.assemble_shares(proof_shares)
     }
 }

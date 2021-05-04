@@ -27,7 +27,7 @@ impl InnerProductProof {
     ///
     /// The lengths of the vectors must all be the same, and must all
     /// be either 0 or a power of 2.
-    #[allow(clippy::many_single_char_names)]
+    #[allow(clippy::many_single_char_names, clippy::too_many_arguments)]
     pub fn create(
         w: &Scalar,
         Q: &EdwardsPoint,
@@ -73,7 +73,7 @@ impl InnerProductProof {
         // into multiscalar muls, for performance.
         // line 727 in bulletproof.cc
         if n != 1 {
-            n = n / 2;
+            n /= 2;
             let (a_L, a_R) = a.split_at_mut(n);
             let (b_L, b_R) = b.split_at_mut(n);
             let (G_L, G_R) = G.split_at_mut(n);
@@ -85,11 +85,11 @@ impl InnerProductProof {
 
             let L = EdwardsPoint::vartime_multiscalar_mul(
                 a_L.iter()
-                    .zip(G_factors[n..2 * n].into_iter())
+                    .zip(G_factors[n..2 * n].iter())
                     .map(|(a_L_i, g)| a_L_i * g)
                     .chain(
                         b_R.iter()
-                            .zip(H_factors[0..n].into_iter())
+                            .zip(H_factors[0..n].iter())
                             .map(|(b_R_i, h)| b_R_i * h),
                     )
                     .chain(iter::once(c_L))
@@ -100,11 +100,11 @@ impl InnerProductProof {
 
             let R = EdwardsPoint::vartime_multiscalar_mul(
                 a_R.iter()
-                    .zip(G_factors[0..n].into_iter())
+                    .zip(G_factors[0..n].iter())
                     .map(|(a_R_i, g)| a_R_i * g)
                     .chain(
                         b_L.iter()
-                            .zip(H_factors[n..2 * n].into_iter())
+                            .zip(H_factors[n..2 * n].iter())
                             .map(|(b_L_i, h)| b_L_i * h),
                     )
                     .chain(iter::once(c_R))
@@ -147,7 +147,7 @@ impl InnerProductProof {
         }
 
         while n != 1 {
-            n = n / 2;
+            n /= 2;
             let (a_L, a_R) = a.split_at_mut(n);
             let (b_L, b_R) = b.split_at_mut(n);
             let (G_L, G_R) = G.split_at_mut(n);
@@ -215,6 +215,7 @@ impl InnerProductProof {
     ///
     /// The verifier must provide the input length \\(n\\) explicitly
     /// to avoid unbounded allocation within the inner product proof.
+    #[allow(clippy::type_complexity)]
     pub(crate) fn verification_scalars(
         &self,
         n: usize,
@@ -283,7 +284,7 @@ impl InnerProductProof {
     /// `verification_scalars` method to combine inner product
     /// verification with other checks in a single multiscalar
     /// multiplication.
-    #[allow(dead_code)]
+    #[allow(dead_code, clippy::too_many_arguments)]
     pub fn verify<IG, IH>(
         &self,
         n: usize,

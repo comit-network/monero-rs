@@ -21,6 +21,9 @@ jobs:
     - name: Run Rustfmt
       run: cargo fmt -- --check
 
+    - name: Install libboost
+      run: sudo apt-get install libboost-dev
+
     - name: Run Clippy
       run: cargo clippy --workspace --all-targets -- -D warnings
 
@@ -84,5 +87,8 @@ jobs:
         profile: minimal
 
     - uses: Swatinem/rust-cache@v1.2.0
+
+    - name: Install libboost
+      run: sudo apt-get install libboost-dev
 
     - run: cargo test --verbose --all-features

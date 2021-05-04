@@ -184,12 +184,12 @@ impl RangeProof {
             return Err(ProofError::WrongNumBlindingFactors);
         }
 
-        let dealer = Dealer::new(bp_gens, pc_gens, n, values.len())?;
+        let dealer = Dealer::create(bp_gens, pc_gens, n, values.len())?;
 
         let parties: Vec<_> = values
             .iter()
             .zip(blindings.iter())
-            .map(|(&v, &v_blinding)| Party::new(bp_gens, pc_gens, v, v_blinding, n))
+            .map(|(&v, &v_blinding)| Party::create(bp_gens, pc_gens, v, v_blinding, n))
             .collect::<Result<Vec<_>, _>>()?;
 
         let (parties, bit_commitments): (Vec<_>, Vec<_>) = parties
@@ -276,6 +276,7 @@ impl RangeProof {
 
     /// Verifies an aggregated rangeproof for the given value
     /// commitments.
+    #[allow(clippy::many_single_char_names)]
     pub fn verify_multiple_with_rng<T: RngCore + CryptoRng>(
         &self,
         bp_gens: &BulletproofGens,
@@ -422,7 +423,7 @@ impl RangeProof {
                         .map(|V| V.decompress().map(|V| eight * V)),
                 ),
         )
-        .ok_or_else(|| ProofError::VerificationError)?;
+        .ok_or(ProofError::VerificationError)?;
 
         if mega_check.is_identity() {
             Ok(())
@@ -492,7 +493,7 @@ impl RangeProof {
         use crate::bulletproof::util::read32;
 
         let A = CompressedEdwardsY(read32(&slice[0..]));
-        let S = CompressedEdwardsY(read32(&slice[1 * 32..]));
+        let S = CompressedEdwardsY(read32(&slice[32..]));
         let T_1 = CompressedEdwardsY(read32(&slice[2 * 32..]));
         let T_2 = CompressedEdwardsY(read32(&slice[3 * 32..]));
 
@@ -561,15 +562,15 @@ pub enum ProofError {
     /// MPC protocol is not exposed by the single-party API, we
     /// consider its errors to be internal errors.
     #[error("Internal error during proof creation: {0}")]
-    ProvingError(MPCError),
+    ProvingError(MpcError),
 }
 
-impl From<MPCError> for ProofError {
-    fn from(e: MPCError) -> ProofError {
+impl From<MpcError> for ProofError {
+    fn from(e: MpcError) -> ProofError {
         match e {
-            MPCError::InvalidBitsize => ProofError::InvalidBitsize,
-            MPCError::InvalidAggregation => ProofError::InvalidAggregation,
-            MPCError::InvalidGeneratorsLength => ProofError::InvalidGeneratorsLength,
+            MpcError::InvalidBitsize => ProofError::InvalidBitsize,
+            MpcError::InvalidAggregation => ProofError::InvalidAggregation,
+            MpcError::InvalidGeneratorsLength => ProofError::InvalidGeneratorsLength,
             _ => ProofError::ProvingError(e),
         }
     }
@@ -583,7 +584,7 @@ impl From<MPCError> for ProofError {
 /// proving, its API should not expose the complexity of the MPC
 /// protocol.
 #[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]
-pub enum MPCError {
+pub enum MpcError {
     /// This error occurs when the dealer gives a zero challenge,
     /// which would annihilate the blinding factors.
     #[error("Dealer gave a malicious challenge value.")]
@@ -680,11 +681,9 @@ impl TryFrom<crate::util::ringct::Bulletproof> for RangeProof {
             S: CompressedEdwardsY::from_slice(&from.S.key),
             T_1: CompressedEdwardsY::from_slice(&from.T1.key),
             T_2: CompressedEdwardsY::from_slice(&from.T2.key),
-            t_x: Scalar::from_canonical_bytes(from.t.key).ok_or_else(|| NonCanonicalScalar)?,
-            t_x_blinding: Scalar::from_canonical_bytes(from.taux.key)
-                .ok_or_else(|| NonCanonicalScalar)?,
-            e_blinding: Scalar::from_canonical_bytes(from.mu.key)
-                .ok_or_else(|| NonCanonicalScalar)?,
+            t_x: Scalar::from_canonical_bytes(from.t.key).ok_or(NonCanonicalScalar)?,
+            t_x_blinding: Scalar::from_canonical_bytes(from.taux.key).ok_or(NonCanonicalScalar)?,
+            e_blinding: Scalar::from_canonical_bytes(from.mu.key).ok_or(NonCanonicalScalar)?,
             ipp_proof: InnerProductProof {
                 L_vec: from
                     .L
@@ -696,8 +695,8 @@ impl TryFrom<crate::util::ringct::Bulletproof> for RangeProof {
                     .iter()
                     .map(|R| CompressedEdwardsY::from_slice(&R.key))
                     .collect(),
-                a: Scalar::from_canonical_bytes(from.a.key).ok_or_else(|| NonCanonicalScalar)?,
-                b: Scalar::from_canonical_bytes(from.b.key).ok_or_else(|| NonCanonicalScalar)?,
+                a: Scalar::from_canonical_bytes(from.a.key).ok_or(NonCanonicalScalar)?,
+                b: Scalar::from_canonical_bytes(from.b.key).ok_or(NonCanonicalScalar)?,
             },
         })
     }
@@ -734,7 +733,7 @@ mod tests {
         for _ in 0..n {
             power_g += (z - z2) * exp_y - z3 * exp_2;
 
-            exp_y = exp_y * y; // y^i -> y^(i+1)
+            exp_y *= y; // y^i -> y^(i+1)
             exp_2 = exp_2 + exp_2; // 2^i -> 2^(i+1)
         }
 
@@ -790,7 +789,7 @@ mod tests {
     fn detect_dishonest_dealer_during_aggregation() {
         use self::dealer::*;
         use self::party::*;
-        use crate::bulletproof::MPCError;
+        use crate::bulletproof::MpcError;
 
         // Simulate one party
         let m = 1;
@@ -804,9 +803,9 @@ mod tests {
 
         let v0 = rng.gen::<u32>() as u64;
         let v0_blinding = Scalar::random(&mut rng);
-        let party0 = Party::new(&bp_gens, &pc_gens, v0, v0_blinding, n).unwrap();
+        let party0 = Party::create(&bp_gens, &pc_gens, v0, v0_blinding, n).unwrap();
 
-        let dealer = Dealer::new(&bp_gens, &pc_gens, n, m).unwrap();
+        let dealer = Dealer::create(&bp_gens, &pc_gens, n, m).unwrap();
 
         // Now do the protocol flow as normal....
 
@@ -824,7 +823,7 @@ mod tests {
 
         let maybe_share0 = party0.apply_challenge(&poly_challenge);
 
-        assert!(maybe_share0.unwrap_err() == MPCError::MaliciousDealer);
+        assert!(maybe_share0.unwrap_err() == MpcError::MaliciousDealer);
     }
 
     // TODO: Unignore this test and figure out why verifying mainnet
