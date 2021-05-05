@@ -20,11 +20,12 @@
 //! [`Transaction`]: crate::blockdata::transaction::Transaction
 //!
 
-use std::{fmt, io};
+use std::{convert::TryInto, fmt, io};
 
-use crate::consensus::encode::{self, serialize, Decodable, Encodable, VarInt};
+use crate::{PublicKey, ViewPair, consensus::encode::{self, serialize, Decodable, Encodable, VarInt}, cryptonote::onetime_key::KeyGenerator};
 use crate::cryptonote::hash;
 
+use curve25519_dalek::scalar::Scalar;
 #[cfg(feature = "serde_support")]
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "serde_support")]
@@ -151,6 +152,61 @@ pub enum EcdhInfo {
         /// Amount value.
         amount: hash::Hash8,
     },
+}
+
+impl EcdhInfo {
+    /// TODO
+    pub (crate) fn open_commitment(&self, view_pair: &ViewPair, tx_pubkey: &PublicKey, index: usize) ->  (u64, Scalar) {
+        let shared_key = KeyGenerator::from_key(view_pair, *tx_pubkey).get_rvn_scalar(index);
+
+        match self {
+            // ecdhDecode in rctOps.cpp else
+            EcdhInfo::Standard { mask, amount } => {
+                let shared_sec1 = hash::Hash::hash(shared_key.as_bytes()).to_bytes();
+                let shared_sec2 = hash::Hash::hash(&shared_sec1).to_bytes();
+                let mask_scalar = Scalar::from_bytes_mod_order(mask.key)
+                    - Scalar::from_bytes_mod_order(shared_sec1);
+
+                let amount_scalar = Scalar::from_bytes_mod_order(amount.key)
+                    - Scalar::from_bytes_mod_order(shared_sec2);
+                // get first 64 bits (d2b in rctTypes.cpp)
+                let amount_significant_bytes = amount_scalar.to_bytes()[0..8]
+                    .try_into()
+                    .expect("Can't fail");
+                let amount = u64::from_le_bytes(amount_significant_bytes);
+                (amount, mask_scalar)
+            }
+            // ecdhDecode in rctOps.cpp if (v2)
+            EcdhInfo::Bulletproof { amount } => {
+                // genCommitmentMask in .cpp
+                let mut commitment_key = "commitment_mask".as_bytes().to_vec();
+                commitment_key.extend(shared_key.as_bytes());
+                // yt in Z2M p 53
+                let mask_scalar = Scalar::from_bytes_mod_order(
+                    hash::Hash::hash(&commitment_key).to_fixed_bytes(),
+                );
+                // ecdhHash in .cpp
+                let mut amount_key = "amount".as_bytes().to_vec();
+                amount_key.extend(shared_key.as_bytes());
+
+                // Hn("amount", Hn(rKbv,t))
+                let hash_shared_key = hash::Hash::hash(&amount_key).to_fixed_bytes();
+                let hash_shared_key_significant_bytes = hash_shared_key[0..8]
+                    .try_into()
+                    .expect("hash_shared_key create above has 32 bytes");
+
+                // bt in Z2M and masked.amount in .cpp
+                let masked_amount = amount.0; // 8 bytes
+
+                // amount_t = bt XOR Hn("amount", Hn("amount", Hn(rKbv,t)))
+                // xor8(masked.amount, ecdhHash(sharedSec)); in .cpp
+                let amount = u64::from_le_bytes(masked_amount)
+                    ^ u64::from_le_bytes(hash_shared_key_significant_bytes);
+
+                (amount, mask_scalar)
+            }
+        }
+    }
 }
 
 impl fmt::Display for EcdhInfo {

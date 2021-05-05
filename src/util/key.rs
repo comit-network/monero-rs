@@ -103,6 +103,7 @@ pub struct PrivateKey {
 }
 
 impl PrivateKey {
+    /// Generate random private key.
     pub fn random<R: RngCore + CryptoRng>(rng: &mut R) -> Self {
         Self {
             scalar: Scalar::random(rng),
