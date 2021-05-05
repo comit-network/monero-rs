@@ -38,14 +38,8 @@ lazy_static::lazy_static! {
 pub fn make_bulletproof<T>(
     rng: &mut T,
     amounts: &[u64],
-) -> Result<
-    (
-        crate::util::ringct::Bulletproof,
-        Vec<CompressedEdwardsY>,
-        Vec<Scalar>,
-    ),
-    ProofError,
->
+    blindings: &[Scalar],
+) -> Result<(crate::util::ringct::Bulletproof, Vec<CompressedEdwardsY>), ProofError>
 where
     T: RngCore + CryptoRng,
 {
@@ -54,10 +48,6 @@ where
 
     let bp_gens = BulletproofGens::new(amount_bits, n_commitments);
     let pc_gens = PedersenGens::default();
-
-    let blindings = (0..amounts.len())
-        .map(|_| Scalar::random(rng))
-        .collect::<Vec<_>>();
 
     let (proof, commitments) = RangeProof::prove_multiple_with_rng(
         &bp_gens,
@@ -68,7 +58,7 @@ where
         rng,
     )?;
 
-    Ok((proof.into(), commitments, blindings))
+    Ok((proof.into(), commitments))
 }
 
 /// Verify that the `proof` is valid for the provided commitments.
@@ -710,7 +700,12 @@ mod tests {
     #[test]
     fn public_api() {
         let mut rng = rand::thread_rng();
-        let (proof, commitments, _) = make_bulletproof(&mut rng, &[100u64, 2000u64]).unwrap();
+
+        let blinding_0 = Scalar::random(&mut rng);
+        let blinding_1 = Scalar::random(&mut rng);
+
+        let (proof, commitments) =
+            make_bulletproof(&mut rng, &[100u64, 2000u64], &[blinding_0, blinding_1]).unwrap();
 
         assert!(verify_bulletproof(&mut rng, proof, commitments).is_ok())
     }
