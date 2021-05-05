@@ -9,6 +9,7 @@ use hash_edwards_to_edwards::hash_to_point;
 use integer_encoding::VarInt;
 use keccak_hash::keccak_256;
 
+// TODO: Remove this
 lazy_static::lazy_static! {
     /// Alternate generator of ed25519.
     ///
