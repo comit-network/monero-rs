@@ -173,7 +173,7 @@ impl EcdhInfo {
     }
 
     /// TODO
-    pub(crate) fn open_commitment(
+    pub fn open_commitment(
         &self,
         view_pair: &ViewPair,
         tx_pubkey: &PublicKey,
