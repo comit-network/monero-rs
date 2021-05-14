@@ -364,15 +364,16 @@ impl TransactionPrefix {
                     .zip(tx_additional_pubkeys.iter())
                     .filter_map(|((i, out), tx_pubkey)| {
                         match out.target {
-                            TxOutTarget::ToKey { key } => match checker.check(i, &key, tx_pubkey) {
-                                Some(sub_index) => Some(OwnedTxOut {
-                                    index: i,
-                                    out,
-                                    sub_index: *sub_index,
-                                    tx_pubkey: *tx_pubkey,
-                                }),
-                                None => None,
-                            },
+                            TxOutTarget::ToKey { key } => {
+                                checker
+                                    .check(i, &key, tx_pubkey)
+                                    .map(|sub_index| OwnedTxOut {
+                                        index: i,
+                                        out,
+                                        sub_index: *sub_index,
+                                        tx_pubkey: *tx_pubkey,
+                                    })
+                            }
                             // Reject all non-toKey outputs
                             _ => None,
                         }
@@ -386,17 +387,14 @@ impl TransactionPrefix {
                         .zip(self.outputs.iter())
                         .filter_map(|(i, out)| {
                             match out.target {
-                                TxOutTarget::ToKey { key } => {
-                                    match checker.check(i, &key, &tx_pubkey) {
-                                        Some(sub_index) => Some(OwnedTxOut {
-                                            index: i,
-                                            out,
-                                            sub_index: *sub_index,
-                                            tx_pubkey,
-                                        }),
-                                        None => None,
-                                    }
-                                }
+                                TxOutTarget::ToKey { key } => checker
+                                    .check(i, &key, &tx_pubkey)
+                                    .map(|sub_index| OwnedTxOut {
+                                        index: i,
+                                        out,
+                                        sub_index: *sub_index,
+                                        tx_pubkey,
+                                    }),
                                 // Reject all non-toKey outputs
                                 _ => None,
                             }
