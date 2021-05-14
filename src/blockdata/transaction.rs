@@ -34,10 +34,10 @@ use std::ops::Range;
 use std::{fmt, io};
 
 use crate::cryptonote::hash::Hashable;
-use curve25519_dalek::edwards::CompressedEdwardsY;
+use curve25519_dalek::edwards::{CompressedEdwardsY, EdwardsPoint};
+use curve25519_dalek::scalar::Scalar;
 #[cfg(feature = "serde_support")]
 use serde::{Deserialize, Serialize};
-use curve25519_dalek::scalar::Scalar;
 
 /// Errors possible when manipulating transactions.
 #[derive(Error, Clone, Copy, Debug, PartialEq)]
@@ -218,6 +218,10 @@ pub struct OwnedTxOut<'a> {
     ///
     /// None if we didn't have enough information to unblind the output.
     pub blinding_factor: Option<Scalar>,
+    /// The original commitment of this output.
+    ///
+    /// None if we didn't have enough information to unblind the output.
+    pub commitment: Option<EdwardsPoint>,
 }
 
 impl<'a> OwnedTxOut<'a> {
@@ -406,20 +410,25 @@ impl TransactionPrefix {
                 Some((i, out, sub_index, tx_pubkey))
             })
             .map(|(i, out, sub_index, tx_pubkey)| {
-                let (amount, blinding_factor) = match rct_sig_base {
+                let (amount, blinding_factor, commitment) = match rct_sig_base {
                     Some(rct_sig_base) => {
-                        let ecdh_info = rct_sig_base.ecdh_info.get(i).ok_or(Error::MissingSignature)?;
-                        let actual_commitment = rct_sig_base.out_pk.get(i).ok_or(Error::MissingCommitment)?;
-                        let actual_commitment = CompressedEdwardsY(actual_commitment.mask.key).decompress().ok_or(Error::InvalidCommitment)?;
+                        let ecdh_info = rct_sig_base
+                            .ecdh_info
+                            .get(i)
+                            .ok_or(Error::MissingSignature)?;
+                        let actual_commitment =
+                            rct_sig_base.out_pk.get(i).ok_or(Error::MissingCommitment)?;
+                        let actual_commitment = CompressedEdwardsY(actual_commitment.mask.key)
+                            .decompress()
+                            .ok_or(Error::InvalidCommitment)?;
 
-                        let (amount, blinding_factor) =
-                            ecdh_info.open_commitment(pair, tx_pubkey, i, &actual_commitment).ok_or(Error::InvalidCommitment)?;
+                        let (amount, blinding_factor) = ecdh_info
+                            .open_commitment(pair, tx_pubkey, i, &actual_commitment)
+                            .ok_or(Error::InvalidCommitment)?;
 
-                        (Some(amount), Some(blinding_factor))
-                    },
-                    None => {
-                        (None, None)
+                        (Some(amount), Some(blinding_factor), Some(actual_commitment))
                     }
+                    None => (None, None, None),
                 };
 
                 Ok(OwnedTxOut {
@@ -429,6 +438,7 @@ impl TransactionPrefix {
                     tx_pubkey: *tx_pubkey,
                     amount,
                     blinding_factor,
+                    commitment,
                 })
             })
             .collect::<Result<Vec<_>, _>>()?;
@@ -504,7 +514,8 @@ impl Transaction {
         major: Range<u32>,
         minor: Range<u32>,
     ) -> Result<Vec<OwnedTxOut>, Error> {
-        self.prefix().check_outputs(pair, major, minor, self.rct_signatures.sig.as_ref())
+        self.prefix()
+            .check_outputs(pair, major, minor, self.rct_signatures.sig.as_ref())
     }
 
     /// Compute the message to be signed by the CLSAG signature algorithm.
@@ -1007,7 +1018,10 @@ mod tests {
             "3bc7ff015b227e7313cc2e8668bfbb3f3acbee274a9c201d6211cf681b5f6bb1",
             format!("{:02x}", tx.hash())
         );
-        assert_eq!(true, tx.check_outputs(&viewpair, 0..1, 0..200, None).is_ok());
+        assert_eq!(
+            true,
+            tx.check_outputs(&viewpair, 0..1, 0..200, None).is_ok()
+        );
         assert_eq!(hex, serialize(&tx));
 
         let tx = deserialize::<Transaction>(&hex[..]);
