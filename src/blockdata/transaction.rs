@@ -25,10 +25,9 @@ use crate::cryptonote::hash;
 use crate::cryptonote::onetime_key::{KeyRecoverer, SubKeyChecker};
 use crate::cryptonote::subaddress::Index;
 use crate::util::amount::RecoveryError;
-use crate::util::key::{KeyPair, PrivateKey, PublicKey, ViewPair, H};
+use crate::util::key::{KeyPair, PrivateKey, PublicKey, ViewPair};
 use crate::util::ringct::{RctSig, RctSigBase, RctSigPrunable, RctType, Signature};
 
-use curve25519_dalek::scalar::Scalar;
 use hex::encode as hex_encode;
 use thiserror::Error;
 
@@ -36,6 +35,7 @@ use std::ops::Range;
 use std::{fmt, io};
 
 use crate::cryptonote::hash::Hashable;
+use curve25519_dalek::edwards::CompressedEdwardsY;
 #[cfg(feature = "serde_support")]
 use serde::{Deserialize, Serialize};
 
@@ -485,18 +485,13 @@ impl Transaction {
             .get(out.index)
             .ok_or(RecoveryError::IndexOutOfRange)?;
 
-        let (amount, commitment_mask) =
-            ecdh_info.open_commitment(view_pair, &out.tx_pubkey, out.index);
+        let commitment = CompressedEdwardsY(sig.out_pk[out.index].mask.key)
+            .decompress()
+            .ok_or(RecoveryError::InvalidCommitment)?;
 
-        let blinding_factor =
-            PublicKey::from_private_key(&PrivateKey::from_scalar(commitment_mask));
-        let committed_amount = H * &PrivateKey::from_scalar(Scalar::from(amount));
-        let expected_commitment = blinding_factor + committed_amount;
-        let actual_commitment = PublicKey::from_slice(&sig.out_pk[out.index].mask.key);
-
-        if actual_commitment != Ok(expected_commitment) {
-            return Err(RecoveryError::InvalidCommitment);
-        }
+        let (amount, _) = ecdh_info
+            .open_commitment(view_pair, &out.tx_pubkey, out.index, &commitment)
+            .ok_or(RecoveryError::InvalidCommitment)?;
 
         Ok(amount)
     }
