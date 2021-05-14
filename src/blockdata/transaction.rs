@@ -368,8 +368,10 @@ impl TransactionPrefix {
         let checker = SubKeyChecker::new(&pair, major, minor);
 
         let owned_txouts = match self.tx_additional_pubkeys() {
-            Some(tx_additional_pubkeys) => (0..)
-                .zip(self.outputs.iter())
+            Some(tx_additional_pubkeys) => self
+                .outputs
+                .iter()
+                .enumerate()
                 .zip(tx_additional_pubkeys.iter())
                 .filter_map(|((i, out), tx_pubkey)| {
                     let key = out.target.as_one_time_key()?;
@@ -386,8 +388,9 @@ impl TransactionPrefix {
             None => {
                 let tx_pubkey = self.tx_pubkey().ok_or(Error::NoTxPublicKey)?;
 
-                (0..)
-                    .zip(self.outputs.iter())
+                self.outputs
+                    .iter()
+                    .enumerate()
                     .filter_map(|(i, out)| {
                         let key = out.target.as_one_time_key()?;
                         let sub_index = checker.check(i, &key, &tx_pubkey)?;
