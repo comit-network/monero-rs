@@ -48,6 +48,9 @@ pub enum Error {
     /// Scripts input/output are not supported.
     #[error("Script not supported")]
     ScriptNotSupported,
+    /// No signatures present in transaction
+    #[error("No signatures present in transaction")]
+    NoSignatures,
 }
 
 /// The key image used in transaction inputs [`TxIn`] to commit to the use of an output one-time
@@ -207,6 +210,28 @@ impl<'a> OwnedTxOut<'a> {
         let recoverer = KeyRecoverer::new(keys, self.tx_pubkey);
         recoverer.recover(self.index, self.sub_index)
     }
+}
+
+/// Represents a TxOut that has been "opened" with the appropriate key pair.
+///
+/// Being opened, this data structure contains all sorts of information that is hidden to observers
+/// of the blockchain like the actual amount, blinding factor and original signing key that was used.
+#[derive(Debug)]
+pub struct OpenedTxOut<'a> {
+    /// Index of the output in the transaction.
+    pub index: usize,
+    /// A reference to the actual redeemable output.
+    pub out: &'a TxOut,
+    /// Index of the key pair to use, can be `0/0` for main address.
+    pub sub_index: Index,
+    /// The associated transaction public key.
+    pub tx_pubkey: PublicKey,
+    /// The actual key required to spend this output.
+    pub signing_key: PrivateKey,
+    /// The blinding factor used for the commitment of this output.
+    pub blinding_factor: Scalar,
+    /// The original amount of this output.
+    pub amount: u64,
 }
 
 /// Every transaction contains an extra field, which is a part of transaction prefix and allow
@@ -476,6 +501,48 @@ impl Transaction {
         minor: Range<u32>,
     ) -> Result<Vec<OwnedTxOut>, Error> {
         self.prefix().check_outputs(pair, major, minor)
+    }
+
+    /// Iterate over transaction outputs and "open" all related to the given key pair.
+    pub fn open_outputs(
+        &self,
+        keys: &KeyPair,
+        major: Range<u32>,
+        minor: Range<u32>,
+    ) -> Result<Vec<OpenedTxOut<'_>>, Error> {
+        let view_pair = ViewPair::from(keys);
+
+        let owned_outputs = self.check_outputs(&view_pair, major, minor)?;
+        let ecdh_infos = self
+            .rct_signatures
+            .sig
+            .as_ref()
+            .ok_or(Error::NoSignatures)?
+            .ecdh_info
+            .as_slice();
+
+        let opened_outputs = owned_outputs
+            .into_iter()
+            .map(|tx_out| {
+                let (amount, blinding_factor) = ecdh_infos[tx_out.index].open_commitment(
+                    &view_pair,
+                    &tx_out.tx_pubkey,
+                    tx_out.index,
+                );
+
+                OpenedTxOut {
+                    index: tx_out.index,
+                    out: tx_out.out,
+                    sub_index: tx_out.sub_index,
+                    tx_pubkey: tx_out.tx_pubkey,
+                    signing_key: tx_out.recover_key(keys),
+                    blinding_factor,
+                    amount,
+                }
+            })
+            .collect();
+
+        Ok(opened_outputs)
     }
 
     /// Calculate an output's amount.
