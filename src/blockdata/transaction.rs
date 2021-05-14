@@ -366,12 +366,10 @@ impl TransactionPrefix {
         minor: Range<u32>,
     ) -> Result<Vec<OwnedTxOut>, Error> {
         let checker = SubKeyChecker::new(&pair, major, minor);
+        let outputs = self.outputs.iter().enumerate();
 
         let owned_txouts = match self.tx_additional_pubkeys() {
-            Some(tx_additional_pubkeys) => self
-                .outputs
-                .iter()
-                .enumerate()
+            Some(tx_additional_pubkeys) => outputs
                 .zip(tx_additional_pubkeys.iter())
                 .filter_map(|((i, out), tx_pubkey)| {
                     let key = out.target.as_to_key()?;
@@ -388,9 +386,7 @@ impl TransactionPrefix {
             None => {
                 let tx_pubkey = self.tx_pubkey().ok_or(Error::NoTxPublicKey)?;
 
-                self.outputs
-                    .iter()
-                    .enumerate()
+                outputs
                     .filter_map(|(i, out)| {
                         let key = out.target.as_to_key()?;
                         let sub_index = checker.check(i, &key, &tx_pubkey)?;
