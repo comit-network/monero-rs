@@ -24,7 +24,6 @@ use crate::consensus::encode::{self, serialize, Decodable, Encodable, VarInt};
 use crate::cryptonote::hash;
 use crate::cryptonote::onetime_key::{KeyRecoverer, SubKeyChecker};
 use crate::cryptonote::subaddress::Index;
-use crate::util::amount::RecoveryError;
 use crate::util::key::{KeyPair, PrivateKey, PublicKey, ViewPair};
 use crate::util::ringct::{RctSig, RctSigBase, RctSigPrunable, RctType, Signature};
 
@@ -38,6 +37,7 @@ use crate::cryptonote::hash::Hashable;
 use curve25519_dalek::edwards::CompressedEdwardsY;
 #[cfg(feature = "serde_support")]
 use serde::{Deserialize, Serialize};
+use curve25519_dalek::scalar::Scalar;
 
 /// Errors possible when manipulating transactions.
 #[derive(Error, Clone, Copy, Debug, PartialEq)]
@@ -48,6 +48,15 @@ pub enum Error {
     /// Scripts input/output are not supported.
     #[error("Script not supported")]
     ScriptNotSupported,
+    /// Missing signature for the output.
+    #[error("Missing signature for the output")]
+    MissingSignature,
+    /// Invalid commitment.
+    #[error("Invalid commitment")]
+    InvalidCommitment,
+    /// Missing commitment.
+    #[error("Missing commitment")]
+    MissingCommitment,
 }
 
 /// The key image used in transaction inputs [`TxIn`] to commit to the use of an output one-time
@@ -201,6 +210,14 @@ pub struct OwnedTxOut<'a> {
     pub sub_index: Index,
     /// The associated transaction public key.
     pub tx_pubkey: PublicKey,
+    /// The unblinded amount of this output.
+    ///
+    /// None if we didn't have enough information to unblind the output.
+    pub amount: Option<u64>,
+    /// The original blinding factor of this output.
+    ///
+    /// None if we didn't have enough information to unblind the output.
+    pub blinding_factor: Option<Scalar>,
 }
 
 impl<'a> OwnedTxOut<'a> {
@@ -364,6 +381,7 @@ impl TransactionPrefix {
         pair: &ViewPair,
         major: Range<u32>,
         minor: Range<u32>,
+        rct_sig_base: Option<&RctSigBase>,
     ) -> Result<Vec<OwnedTxOut>, Error> {
         let tx_pubkeys = match self.tx_additional_pubkeys() {
             Some(additional_keys) => additional_keys,
@@ -385,14 +403,35 @@ impl TransactionPrefix {
                 let key = out.target.as_to_key()?;
                 let sub_index = checker.check(i, &key, tx_pubkey)?;
 
-                Some(OwnedTxOut {
+                Some((i, out, sub_index, tx_pubkey))
+            })
+            .map(|(i, out, sub_index, tx_pubkey)| {
+                let (amount, blinding_factor) = match rct_sig_base {
+                    Some(rct_sig_base) => {
+                        let ecdh_info = rct_sig_base.ecdh_info.get(i).ok_or(Error::MissingSignature)?;
+                        let actual_commitment = rct_sig_base.out_pk.get(i).ok_or(Error::MissingCommitment)?;
+                        let actual_commitment = CompressedEdwardsY(actual_commitment.mask.key).decompress().ok_or(Error::InvalidCommitment)?;
+
+                        let (amount, blinding_factor) =
+                            ecdh_info.open_commitment(pair, tx_pubkey, i, &actual_commitment).ok_or(Error::InvalidCommitment)?;
+
+                        (Some(amount), Some(blinding_factor))
+                    },
+                    None => {
+                        (None, None)
+                    }
+                };
+
+                Ok(OwnedTxOut {
                     index: i,
                     out,
                     sub_index: *sub_index,
                     tx_pubkey: *tx_pubkey,
+                    amount,
+                    blinding_factor,
                 })
             })
-            .collect();
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(owned_txouts)
     }
@@ -465,35 +504,7 @@ impl Transaction {
         major: Range<u32>,
         minor: Range<u32>,
     ) -> Result<Vec<OwnedTxOut>, Error> {
-        self.prefix().check_outputs(pair, major, minor)
-    }
-
-    /// Calculate an output's amount.
-    pub fn get_amount(&self, view_pair: &ViewPair, out: &OwnedTxOut) -> Result<u64, RecoveryError> {
-        if out.index >= self.prefix.outputs.len() {
-            return Err(RecoveryError::IndexOutOfRange);
-        }
-
-        let sig = self
-            .rct_signatures
-            .sig
-            .as_ref()
-            .ok_or(RecoveryError::MissingSignature)?;
-
-        let ecdh_info = sig
-            .ecdh_info
-            .get(out.index)
-            .ok_or(RecoveryError::IndexOutOfRange)?;
-
-        let commitment = CompressedEdwardsY(sig.out_pk[out.index].mask.key)
-            .decompress()
-            .ok_or(RecoveryError::InvalidCommitment)?;
-
-        let (amount, _) = ecdh_info
-            .open_commitment(view_pair, &out.tx_pubkey, out.index, &commitment)
-            .ok_or(RecoveryError::InvalidCommitment)?;
-
-        Ok(amount)
+        self.prefix().check_outputs(pair, major, minor, self.rct_signatures.sig.as_ref())
     }
 
     /// Compute the message to be signed by the CLSAG signature algorithm.
@@ -996,7 +1007,7 @@ mod tests {
             "3bc7ff015b227e7313cc2e8668bfbb3f3acbee274a9c201d6211cf681b5f6bb1",
             format!("{:02x}", tx.hash())
         );
-        assert_eq!(true, tx.check_outputs(&viewpair, 0..1, 0..200).is_ok());
+        assert_eq!(true, tx.check_outputs(&viewpair, 0..1, 0..200, None).is_ok());
         assert_eq!(hex, serialize(&tx));
 
         let tx = deserialize::<Transaction>(&hex[..]);
