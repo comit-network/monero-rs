@@ -111,12 +111,20 @@ pub enum TxOutTarget {
 }
 
 impl TxOutTarget {
-    /// Retreive the public keys, if any.
+    /// Retrieve the public keys, if any.
     pub fn get_pubkeys(&self) -> Option<Vec<PublicKey>> {
         match self {
             TxOutTarget::ToScript { keys, .. } => Some(keys.clone()),
             TxOutTarget::ToKey { key } => Some(vec![*key]),
             TxOutTarget::ToScriptHash { .. } => None,
+        }
+    }
+
+    /// Returns the one-time public key if this is a [`TxOutTarget::ToKey`] and `None` otherwise.
+    pub fn as_one_time_key(&self) -> Option<&PublicKey> {
+        match self {
+            TxOutTarget::ToKey { key } => Some(key),
+            _ => None,
         }
     }
 }
@@ -364,46 +372,37 @@ impl TransactionPrefix {
                     .zip(self.outputs.iter())
                     .zip(tx_additional_pubkeys.iter())
                     .filter_map(|((i, out), tx_pubkey)| {
-                        match out.target {
-                            TxOutTarget::ToKey { key } => {
-                                checker
-                                    .check(i, &key, tx_pubkey)
-                                    .map(|sub_index| OwnedTxOut {
-                                        index: i,
-                                        out,
-                                        sub_index: *sub_index,
-                                        tx_pubkey: *tx_pubkey,
-                                    })
-                            }
-                            // Reject all non-toKey outputs
-                            _ => None,
-                        }
+                        let key = out.target.as_one_time_key()?;
+                        let sub_index = checker.check(i, &key, tx_pubkey)?;
+
+                        Some(OwnedTxOut {
+                            index: i,
+                            out,
+                            sub_index: *sub_index,
+                            tx_pubkey: *tx_pubkey,
+                        })
                     })
                     .collect())
             }
-            None => match self.tx_pubkey() {
-                Some(tx_pubkey) => {
-                    let checker = SubKeyChecker::new(&pair, major, minor);
-                    Ok((0..)
-                        .zip(self.outputs.iter())
-                        .filter_map(|(i, out)| {
-                            match out.target {
-                                TxOutTarget::ToKey { key } => checker
-                                    .check(i, &key, &tx_pubkey)
-                                    .map(|sub_index| OwnedTxOut {
-                                        index: i,
-                                        out,
-                                        sub_index: *sub_index,
-                                        tx_pubkey,
-                                    }),
-                                // Reject all non-toKey outputs
-                                _ => None,
-                            }
+            None => {
+                let tx_pubkey = self.tx_pubkey().ok_or(Error::NoTxPublicKey)?;
+                let checker = SubKeyChecker::new(&pair, major, minor);
+
+                Ok((0..)
+                    .zip(self.outputs.iter())
+                    .filter_map(|(i, out)| {
+                        let key = out.target.as_one_time_key()?;
+                        let sub_index = checker.check(i, &key, &tx_pubkey)?;
+
+                        Some(OwnedTxOut {
+                            index: i,
+                            out,
+                            sub_index: *sub_index,
+                            tx_pubkey,
                         })
-                        .collect())
-                }
-                None => Err(Error::NoTxPublicKey),
-            },
+                    })
+                    .collect())
+            }
         }
     }
 }
