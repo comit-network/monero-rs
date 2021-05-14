@@ -365,42 +365,34 @@ impl TransactionPrefix {
         major: Range<u32>,
         minor: Range<u32>,
     ) -> Result<Vec<OwnedTxOut>, Error> {
-        let checker = SubKeyChecker::new(&pair, major, minor);
-        let outputs = self.outputs.iter().enumerate();
-
-        let owned_txouts = match self.tx_additional_pubkeys() {
-            Some(tx_additional_pubkeys) => outputs
-                .zip(tx_additional_pubkeys.iter())
-                .filter_map(|((i, out), tx_pubkey)| {
-                    let key = out.target.as_to_key()?;
-                    let sub_index = checker.check(i, &key, tx_pubkey)?;
-
-                    Some(OwnedTxOut {
-                        index: i,
-                        out,
-                        sub_index: *sub_index,
-                        tx_pubkey: *tx_pubkey,
-                    })
-                })
-                .collect(),
+        let tx_pubkeys = match self.tx_additional_pubkeys() {
+            Some(additional_keys) => additional_keys,
             None => {
                 let tx_pubkey = self.tx_pubkey().ok_or(Error::NoTxPublicKey)?;
 
-                outputs
-                    .filter_map(|(i, out)| {
-                        let key = out.target.as_to_key()?;
-                        let sub_index = checker.check(i, &key, &tx_pubkey)?;
-
-                        Some(OwnedTxOut {
-                            index: i,
-                            out,
-                            sub_index: *sub_index,
-                            tx_pubkey,
-                        })
-                    })
-                    .collect()
+                // if we don't have additional_pubkeys, we check every output against the single `tx_pubkey`
+                vec![tx_pubkey; self.outputs.len()]
             }
         };
+        let checker = SubKeyChecker::new(&pair, major, minor);
+
+        let owned_txouts = self
+            .outputs
+            .iter()
+            .enumerate()
+            .zip(tx_pubkeys.iter())
+            .filter_map(|((i, out), tx_pubkey)| {
+                let key = out.target.as_to_key()?;
+                let sub_index = checker.check(i, &key, tx_pubkey)?;
+
+                Some(OwnedTxOut {
+                    index: i,
+                    out,
+                    sub_index: *sub_index,
+                    tx_pubkey: *tx_pubkey,
+                })
+            })
+            .collect();
 
         Ok(owned_txouts)
     }
