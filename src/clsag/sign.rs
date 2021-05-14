@@ -13,6 +13,7 @@ use curve25519_dalek::scalar::Scalar;
 /// 1. We can very easily unit test the implementation.
 /// 2. It allows for more esoteric uses of the functionality like adaptor signatures (which need to control how L & R are computed for example).
 #[allow(non_snake_case)]
+#[allow(clippy::too_many_arguments)]
 pub fn sign(
     msg: &[u8; 32],
     signing_key: Scalar,
