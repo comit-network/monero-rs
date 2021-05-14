@@ -35,6 +35,9 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "serde_support")]
 use serde_big_array_unchecked_docs::*;
 
+use crate::util::key::H;
+use curve25519_dalek::constants::ED25519_BASEPOINT_POINT;
+use curve25519_dalek::edwards::EdwardsPoint;
 use thiserror::Error;
 
 /// Serde support for array's bigger than 32 items.
@@ -172,16 +175,17 @@ impl EcdhInfo {
         )
     }
 
-    /// TODO
+    /// Opens the commitment and verifies it against the actual commitment present within the transaction.
     pub fn open_commitment(
         &self,
         view_pair: &ViewPair,
         tx_pubkey: &PublicKey,
         index: usize,
-    ) -> (u64, Scalar) {
+        actual_commitment: &EdwardsPoint,
+    ) -> Option<(u64, Scalar)> {
         let shared_key = KeyGenerator::from_key(view_pair, *tx_pubkey).get_rvn_scalar(index);
 
-        match self {
+        let (amount, blinding_factor) = match self {
             // ecdhDecode in rctOps.cpp else
             EcdhInfo::Standard { mask, amount } => {
                 let shared_sec1 = hash::Hash::hash(shared_key.as_bytes()).to_bytes();
@@ -205,7 +209,18 @@ impl EcdhInfo {
 
                 (u64::from_le_bytes(amount), mask)
             }
+        };
+
+        let amount_scalar = Scalar::from(amount);
+
+        let expected_commitment = ED25519_BASEPOINT_POINT * blinding_factor
+            + H.point.decompress().unwrap() * amount_scalar;
+
+        if &expected_commitment != actual_commitment {
+            return None;
         }
+
+        Some((amount, blinding_factor))
     }
 }
 
