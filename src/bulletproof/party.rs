@@ -297,8 +297,8 @@ impl PartyAwaitingPolyChallenge {
         let r_vec = self.r_poly.eval(pc.x);
 
         Ok(ProofShare {
-            t_x_blinding,
             t_x,
+            t_x_blinding,
             e_blinding,
             l_vec,
             r_vec,
