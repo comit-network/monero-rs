@@ -361,88 +361,6 @@ impl InnerProductProof {
             Err(ProofError::VerificationError)
         }
     }
-
-    /// Returns the size in bytes required to serialize the inner
-    /// product proof.
-    ///
-    /// For vectors of length `n` the proof size is
-    /// \\(32 \cdot (2\lg n+2)\\) bytes.
-    pub fn serialized_size(&self) -> usize {
-        (self.L_vec.len() * 2 + 2) * 32
-    }
-
-    /// Serializes the proof into a byte array of \\(2n+2\\) 32-byte elements.
-    /// The layout of the inner product proof is:
-    /// * \\(n\\) pairs of compressed Edwards points \\(L_0, R_0 \dots, L_{n-1}, R_{n-1}\\),
-    /// * two scalars \\(a, b\\).
-    #[cfg(test)]
-    pub fn to_bytes(&self) -> Vec<u8> {
-        let mut buf = Vec::with_capacity(self.serialized_size());
-        for (l, r) in self.L_vec.iter().zip(self.R_vec.iter()) {
-            buf.extend_from_slice(l.as_bytes());
-            buf.extend_from_slice(r.as_bytes());
-        }
-        buf.extend_from_slice(self.a.as_bytes());
-        buf.extend_from_slice(self.b.as_bytes());
-        buf
-    }
-
-    /// Converts the proof into a byte iterator over serialized view of the proof.
-    /// The layout of the inner product proof is:
-    /// * \\(n\\) pairs of compressed Edwards points \\(L_0, R_0 \dots, L_{n-1}, R_{n-1}\\),
-    /// * two scalars \\(a, b\\).
-    #[inline]
-    pub(crate) fn to_bytes_iter(&self) -> impl Iterator<Item = u8> + '_ {
-        self.L_vec
-            .iter()
-            .zip(self.R_vec.iter())
-            .flat_map(|(l, r)| l.as_bytes().iter().chain(r.as_bytes()))
-            .chain(self.a.as_bytes())
-            .chain(self.b.as_bytes())
-            .copied()
-    }
-
-    /// Deserializes the proof from a byte slice.
-    /// Returns an error in the following cases:
-    /// * the slice does not have \\(2n+2\\) 32-byte elements,
-    /// * \\(n\\) is larger or equal to 32 (proof is too big),
-    /// * any of \\(2n\\) points are not valid compressed Edwards points,
-    /// * any of 2 scalars are not canonical scalars modulo the Ed25519 group order.
-    pub fn from_bytes(slice: &[u8]) -> Result<InnerProductProof, ProofError> {
-        let b = slice.len();
-        if b % 32 != 0 {
-            return Err(ProofError::FormatError);
-        }
-        let num_elements = b / 32;
-        if num_elements < 2 {
-            return Err(ProofError::FormatError);
-        }
-        if (num_elements - 2) % 2 != 0 {
-            return Err(ProofError::FormatError);
-        }
-        let lg_n = (num_elements - 2) / 2;
-        if lg_n >= 32 {
-            return Err(ProofError::FormatError);
-        }
-
-        use crate::bulletproof::util::read32;
-
-        let mut L_vec: Vec<CompressedEdwardsY> = Vec::with_capacity(lg_n);
-        let mut R_vec: Vec<CompressedEdwardsY> = Vec::with_capacity(lg_n);
-        for i in 0..lg_n {
-            let pos = 2 * i * 32;
-            L_vec.push(CompressedEdwardsY(read32(&slice[pos..])));
-            R_vec.push(CompressedEdwardsY(read32(&slice[pos + 32..])));
-        }
-
-        let pos = 2 * lg_n * 32;
-        let a =
-            Scalar::from_canonical_bytes(read32(&slice[pos..])).ok_or(ProofError::FormatError)?;
-        let b = Scalar::from_canonical_bytes(read32(&slice[pos + 32..]))
-            .ok_or(ProofError::FormatError)?;
-
-        Ok(InnerProductProof { L_vec, R_vec, a, b })
-    }
 }
 
 /// Computes an inner product of two vectors
@@ -559,20 +477,6 @@ mod tests {
             b.clone(),
         );
 
-        assert!(proof
-            .verify(
-                n,
-                iter::repeat(Scalar::one()).take(n),
-                util::exp_iter(y_inv).take(n),
-                &P,
-                &Q,
-                &G,
-                &H,
-                w
-            )
-            .is_ok());
-
-        let proof = InnerProductProof::from_bytes(proof.to_bytes().as_slice()).unwrap();
         assert!(proof
             .verify(
                 n,
