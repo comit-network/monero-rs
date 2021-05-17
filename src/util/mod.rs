@@ -27,6 +27,7 @@ pub mod ringct;
 use super::network;
 use crate::blockdata::transaction;
 
+use curve25519_dalek::scalar::Scalar;
 use thiserror::Error;
 
 /// A general error code, other errors should implement conversions to/from this if appropriate.
@@ -50,4 +51,42 @@ pub enum Error {
     /// Monero amount parsing error.
     #[error("Amount parsing error: {0}")]
     AmountParsing(#[from] amount::ParsingError),
+}
+
+/// Defines the constant 1/8.
+///
+/// Monero likes to multiply things by 8 as part of CLSAG, Bulletproof and key derivation.
+/// As such, we also sometimes need to multiply by its inverse to undo this operation.
+///
+/// We define the constant here once instead of littering it across the codebase.
+pub const INV_EIGHT: Scalar = Scalar::from_bits([
+    121, 47, 220, 226, 41, 229, 6, 97, 208, 218, 28, 125, 179, 157, 211, 7, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 6,
+]);
+
+/// Defines the constant 8.
+///
+/// Monero likes to multiply things by 8 as part of CLSAG, Bulletproof and key derivation.
+/// We define the constant here once instead of littering it across the codebase.
+pub const EIGHT: Scalar = Scalar::from_bits([
+    8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+]);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn const_is_inv_eight() {
+        let inv_eight = Scalar::from(8u8).invert();
+
+        assert_eq!(inv_eight, INV_EIGHT);
+    }
+
+    #[test]
+    fn const_is_eight() {
+        let eight = Scalar::from(8u8);
+
+        assert_eq!(eight, EIGHT);
+    }
 }

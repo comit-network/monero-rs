@@ -16,6 +16,7 @@ use rand::{CryptoRng, RngCore};
 
 use inner_product_proof::InnerProductProof;
 
+use crate::util::EIGHT;
 pub use generators::{BulletproofGens, PedersenGens};
 
 mod dealer;
@@ -24,12 +25,6 @@ mod inner_product_proof;
 mod messages;
 mod party;
 mod util;
-
-lazy_static::lazy_static! {
-    pub (crate) static ref INV_EIGHT: Scalar = {
-        Scalar::from(8u8).invert()
-    };
-}
 
 /// Generate `Bulletproof` for the provided `amounts`.
 ///
@@ -374,7 +369,6 @@ impl RangeProof {
         let value_commitment_scalars = util::exp_iter(z).take(m).map(|z_exp| c * zz * z_exp);
         let basepoint_scalar = w * (self.t_x - a * b) + c * (delta(n, m, &y, &z) - self.t_x);
 
-        let eight = Scalar::from(8u8);
         let mega_check = EdwardsPoint::optional_multiscalar_mul(
             iter::once(Scalar::one())
                 .chain(iter::once(x))
@@ -387,17 +381,17 @@ impl RangeProof {
                 .chain(g)
                 .chain(h)
                 .chain(value_commitment_scalars),
-            iter::once(eight * self.A)
-                .chain(iter::once(eight * self.S))
-                .chain(iter::once(eight * self.T_1))
-                .chain(iter::once(eight * self.T_2))
-                .chain(self.ipp_proof.L_vec.iter().map(|L| eight * L))
-                .chain(self.ipp_proof.R_vec.iter().map(|R| eight * R))
+            iter::once(EIGHT * self.A)
+                .chain(iter::once(EIGHT * self.S))
+                .chain(iter::once(EIGHT * self.T_1))
+                .chain(iter::once(EIGHT * self.T_2))
+                .chain(self.ipp_proof.L_vec.iter().map(|L| EIGHT * L))
+                .chain(self.ipp_proof.R_vec.iter().map(|R| EIGHT * R))
                 .chain(iter::once(pc_gens.B_blinding))
                 .chain(iter::once(pc_gens.B))
                 .chain(bp_gens.G(n, m).copied())
                 .chain(bp_gens.H(n, m).copied())
-                .chain(value_commitments.iter().map(|V| eight * V))
+                .chain(value_commitments.iter().map(|V| EIGHT * V))
                 .map(Some),
         )
         .ok_or(ProofError::VerificationError)?;

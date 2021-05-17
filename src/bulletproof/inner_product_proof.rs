@@ -9,7 +9,7 @@ use curve25519_dalek::traits::VartimeMultiscalarMul;
 use keccak_hash::keccak_256;
 
 use crate::bulletproof::ProofError;
-use crate::bulletproof::INV_EIGHT;
+use crate::util::{EIGHT, INV_EIGHT};
 
 #[derive(Clone, Debug)]
 pub struct InnerProductProof {
@@ -93,7 +93,7 @@ impl InnerProductProof {
                             .map(|(b_R_i, h)| b_R_i * h),
                     )
                     .chain(iter::once(c_L))
-                    .map(|s| s * *INV_EIGHT),
+                    .map(|s| s * INV_EIGHT),
                 G_R.iter().chain(H_L.iter()).chain(iter::once(Q)),
             );
 
@@ -107,7 +107,7 @@ impl InnerProductProof {
                             .map(|(b_L_i, h)| b_L_i * h),
                     )
                     .chain(iter::once(c_R))
-                    .map(|s| s * *INV_EIGHT),
+                    .map(|s| s * INV_EIGHT),
                 G_L.iter().chain(H_R.iter()).chain(iter::once(Q)),
             );
 
@@ -158,7 +158,7 @@ impl InnerProductProof {
                 a_L.iter()
                     .chain(b_R.iter())
                     .chain(iter::once(&c_L))
-                    .map(|s| s * *INV_EIGHT),
+                    .map(|s| s * INV_EIGHT),
                 G_R.iter().chain(H_L.iter()).chain(iter::once(Q)),
             );
 
@@ -166,7 +166,7 @@ impl InnerProductProof {
                 a_R.iter()
                     .chain(b_L.iter())
                     .chain(iter::once(&c_R))
-                    .map(|s| s * *INV_EIGHT),
+                    .map(|s| s * INV_EIGHT),
                 G_L.iter().chain(H_R.iter()).chain(iter::once(Q)),
             );
 
@@ -317,10 +317,8 @@ impl InnerProductProof {
         let neg_u_sq = u_sq.iter().map(|ui| -ui);
         let neg_u_inv_sq = u_inv_sq.iter().map(|ui| -ui);
 
-        let eight = Scalar::from(8u8);
-        let Ls = self.L_vec.iter().map(|p| eight * p).collect::<Vec<_>>();
-
-        let Rs = self.R_vec.iter().map(|p| eight * p).collect::<Vec<_>>();
+        let Ls = self.L_vec.iter().map(|p| EIGHT * p).collect::<Vec<_>>();
+        let Rs = self.R_vec.iter().map(|p| EIGHT * p).collect::<Vec<_>>();
 
         let expect_P = EdwardsPoint::vartime_multiscalar_mul(
             iter::once(self.a * self.b)
