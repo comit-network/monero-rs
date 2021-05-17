@@ -66,6 +66,7 @@ mod internal_macros;
 pub mod consensus;
 pub mod blockdata;
 mod bulletproof;
+pub mod clsag;
 pub mod cryptonote;
 pub mod network;
 pub mod util;
