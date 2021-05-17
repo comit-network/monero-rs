@@ -16,7 +16,7 @@ use rand::{CryptoRng, RngCore};
 
 use inner_product_proof::InnerProductProof;
 
-use crate::util::EIGHT;
+use crate::util::{EIGHT, INV_EIGHT};
 pub use generators::{BulletproofGens, PedersenGens};
 
 mod dealer;
@@ -53,7 +53,13 @@ where
         rng,
     )?;
 
-    Ok((proof.into(), commitments))
+    Ok((
+        proof.into(),
+        commitments
+            .into_iter()
+            .map(|c| c * Scalar::from(8u8))
+            .collect(),
+    ))
 }
 
 /// Verify that the `proof` is valid for the provided commitments.
@@ -67,6 +73,10 @@ where
 {
     let amount_bits = 64;
     let n_commitments = commitments.len();
+    let commitments = commitments
+        .into_iter()
+        .map(|c| c * INV_EIGHT)
+        .collect::<Vec<_>>();
 
     let bp_gens = BulletproofGens::new(amount_bits, n_commitments);
     let pc_gens = PedersenGens::default();
@@ -640,6 +650,7 @@ impl TryFrom<crate::util::ringct::Bulletproof> for RangeProof {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::thread_rng;
 
     #[test]
     fn public_api() {
@@ -766,113 +777,88 @@ mod tests {
         assert!(maybe_share0.unwrap_err() == MpcError::MaliciousDealer);
     }
 
-    // TODO: Unignore this test and figure out why verifying mainnet
-    // Monero proofs is not working. It could just be that we're
-    // interpreting the data wrongly
     #[test]
-    #[ignore]
-    fn test_verification_against_monero_bp() {
-        use std::convert::TryInto;
-
-        let bp_gens = BulletproofGens::new(64, 16);
-        let pc_gens = PedersenGens::default();
+    fn verify_monero_mainnet_bulletproof() {
+        use crate::util::ringct::Bulletproof;
+        use crate::util::ringct::Key;
+        use hex_literal::hex;
 
         // data from:
         // https://xmrchain.net/tx/f34e0414a413cc7d6d4452b1a962f08be6de937eeb76fed9ca0774f5cb3b161b/1
 
-        let proof = RangeProof {
-            A: CompressedEdwardsY::from_slice(
-                &hex::decode("78ddbccf2e1ced3b68835600768770ebe3e219db19a35f5ebe6495ec58c763d4")
-                    .unwrap(),
-            )
-            .decompress()
-            .unwrap(),
-            S: CompressedEdwardsY::from_slice(
-                &hex::decode("e61bd5f461172a14d31149207a9f473289f89dbf4c42dff5f7cbcbd87a12210e")
-                    .unwrap(),
-            )
-            .decompress()
-            .unwrap(),
-            T_1: CompressedEdwardsY::from_slice(
-                &hex::decode("74989471b2e26755d60128a0a54de6e8d0a3d30e9c6810f885f09be27339765f")
-                    .unwrap(),
-            )
-            .decompress()
-            .unwrap(),
-            T_2: CompressedEdwardsY::from_slice(
-                &hex::decode("bd0b0fb338cc8f16a3c8b05f504a34223263f6fb61865cff29f62d7731581a85")
-                    .unwrap(),
-            )
-            .decompress()
-            .unwrap(),
-            t_x: Scalar::from_canonical_bytes(
-                hex::decode("0f42ab37f27887291eb3f3126708e5ff4fdf4c4499bc43c61516684e9f176100")
-                    .unwrap()
-                    .try_into()
-                    .unwrap(),
-            )
-            .unwrap(),
-            t_x_blinding: Scalar::from_canonical_bytes(
-                hex::decode("df0abd33124389ef8c32fb948b5e4b40259757b5f0ca6c7010f33c0ee625880f")
-                    .unwrap()
-                    .try_into()
-                    .unwrap(),
-            )
-            .unwrap(),
-            e_blinding: Scalar::from_canonical_bytes(
-                hex::decode("5b98150bedb8ba4861246bb31f3f0cb7a0d9a915475c9be92b847be8c3236602")
-                    .unwrap()
-                    .try_into()
-                    .unwrap(),
-            )
-            .unwrap(),
-            ipp_proof: InnerProductProof {
-                L_vec: vec![
-                    "0568cb5dc56fd8077435a87268931c5995367e9f45ad8527248c69c87840f17e",
-                    "3818ef23fb0da1edb0180be8a06fe66e0c12b85955b96a329eccffeb4f0af152",
-                    "c1f9e3d157143326e3f60101e2119c2e8528bcada27087b8248226b9ad827db5",
-                    "46443a7d575c97658f2ffd4cdfaf53de6b39ca340e59f40d195068e4725feb89",
-                    "b0019ac9d69c511c899ab647695bb6e5c5fff5256aa3b168ecb57b20a5ad6fa8",
-                    "24f25935783d645279e575eac839beba4c91b04efb4fc0c8d7f4a0fa27d95fe1",
-                    "5d8f4d63b5ce10d9ab579c30da28108c13abd54e876a0308636fdc8b0e69d059",
-                ]
-                .iter()
-                .map(|k| {
-                    CompressedEdwardsY::from_slice(&hex::decode(k).unwrap())
-                        .decompress()
-                        .unwrap()
-                })
-                .collect(),
-                R_vec: vec![
-                    "88f99b0bfb5a4e052b209400594c2c423a95497e3be315d9e8fbb4410bd73102",
-                    "e2bdf54f0b3456c5816004549e76c88f004baf8a84aa3d581d7dbffde4316ec4",
-                    "6d808eec11aa732e94040894517806aa615fadf826c9fc351f73f7c13097cc02",
-                    "8e44c3df858a0991f5b176ae4c862f79bdb153cfb35d1e4c75c28f8493c4a3ff",
-                    "b0334d4f506cd30173ce6398de28084fc8b687a4cfe4eca08476e8a042a8e6fd",
-                    "cc11034e07e9c80029b4220cf15574ded93ba96a2f2bc94bd504a30abfddba5a",
-                    "e5ede5ed6e0d603a668baa586bfa2139553ef487c1a9474fbafaa5ba5b8760d0",
-                ]
-                .iter()
-                .map(|k| {
-                    CompressedEdwardsY::from_slice(&hex::decode(k).unwrap())
-                        .decompress()
-                        .unwrap()
-                })
-                .collect(),
-                a: Scalar::from_canonical_bytes(
-                    hex::decode("d782e742fafc78de94aa51bfd89ec61cbf54180093b3617b694652e6a4cea005")
-                        .unwrap()
-                        .try_into()
-                        .unwrap(),
-                )
-                .unwrap(),
-                b: Scalar::from_canonical_bytes(
-                    hex::decode("8ae6cc60d17472f9ca87ffa8932ff480bc55e00d95e60b39aa866bb94ac8f90a")
-                        .unwrap()
-                        .try_into()
-                        .unwrap(),
-                )
-                .unwrap(),
+        let proof = Bulletproof {
+            A: Key {
+                key: hex!("78ddbccf2e1ced3b68835600768770ebe3e219db19a35f5ebe6495ec58c763d4"),
+            },
+            S: Key {
+                key: hex!("e61bd5f461172a14d31149207a9f473289f89dbf4c42dff5f7cbcbd87a12210e"),
+            },
+            T1: Key {
+                key: hex!("74989471b2e26755d60128a0a54de6e8d0a3d30e9c6810f885f09be27339765f"),
+            },
+            T2: Key {
+                key: hex!("bd0b0fb338cc8f16a3c8b05f504a34223263f6fb61865cff29f62d7731581a85"),
+            },
+            taux: Key {
+                key: hex!("df0abd33124389ef8c32fb948b5e4b40259757b5f0ca6c7010f33c0ee625880f"),
+            },
+            mu: Key {
+                key: hex!("5b98150bedb8ba4861246bb31f3f0cb7a0d9a915475c9be92b847be8c3236602"),
+            },
+            L: vec![
+                Key {
+                    key: hex!("0568cb5dc56fd8077435a87268931c5995367e9f45ad8527248c69c87840f17e"),
+                },
+                Key {
+                    key: hex!("3818ef23fb0da1edb0180be8a06fe66e0c12b85955b96a329eccffeb4f0af152"),
+                },
+                Key {
+                    key: hex!("c1f9e3d157143326e3f60101e2119c2e8528bcada27087b8248226b9ad827db5"),
+                },
+                Key {
+                    key: hex!("46443a7d575c97658f2ffd4cdfaf53de6b39ca340e59f40d195068e4725feb89"),
+                },
+                Key {
+                    key: hex!("b0019ac9d69c511c899ab647695bb6e5c5fff5256aa3b168ecb57b20a5ad6fa8"),
+                },
+                Key {
+                    key: hex!("24f25935783d645279e575eac839beba4c91b04efb4fc0c8d7f4a0fa27d95fe1"),
+                },
+                Key {
+                    key: hex!("5d8f4d63b5ce10d9ab579c30da28108c13abd54e876a0308636fdc8b0e69d059"),
+                },
+            ],
+            R: vec![
+                Key {
+                    key: hex!("88f99b0bfb5a4e052b209400594c2c423a95497e3be315d9e8fbb4410bd73102"),
+                },
+                Key {
+                    key: hex!("e2bdf54f0b3456c5816004549e76c88f004baf8a84aa3d581d7dbffde4316ec4"),
+                },
+                Key {
+                    key: hex!("6d808eec11aa732e94040894517806aa615fadf826c9fc351f73f7c13097cc02"),
+                },
+                Key {
+                    key: hex!("8e44c3df858a0991f5b176ae4c862f79bdb153cfb35d1e4c75c28f8493c4a3ff"),
+                },
+                Key {
+                    key: hex!("b0334d4f506cd30173ce6398de28084fc8b687a4cfe4eca08476e8a042a8e6fd"),
+                },
+                Key {
+                    key: hex!("cc11034e07e9c80029b4220cf15574ded93ba96a2f2bc94bd504a30abfddba5a"),
+                },
+                Key {
+                    key: hex!("e5ede5ed6e0d603a668baa586bfa2139553ef487c1a9474fbafaa5ba5b8760d0"),
+                },
+            ],
+            a: Key {
+                key: hex!("d782e742fafc78de94aa51bfd89ec61cbf54180093b3617b694652e6a4cea005"),
+            },
+            b: Key {
+                key: hex!("8ae6cc60d17472f9ca87ffa8932ff480bc55e00d95e60b39aa866bb94ac8f90a"),
+            },
+            t: Key {
+                key: hex!("0f42ab37f27887291eb3f3126708e5ff4fdf4c4499bc43c61516684e9f176100"),
             },
         };
 
@@ -893,9 +879,7 @@ mod tests {
             .unwrap(),
         ];
 
-        assert!(proof
-            .verify_multiple(&bp_gens, &pc_gens, &commitments, 64)
-            .is_ok());
+        verify_bulletproof(&mut thread_rng(), proof, commitments).unwrap();
     }
 
     /// Given a bitsize `n`, test the following:
