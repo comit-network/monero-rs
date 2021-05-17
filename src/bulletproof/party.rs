@@ -9,7 +9,7 @@
 use core::iter;
 
 use clear_on_drop::clear::Clear;
-use curve25519_dalek::edwards::{CompressedEdwardsY, EdwardsPoint};
+use curve25519_dalek::edwards::EdwardsPoint;
 use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::traits::MultiscalarMul;
 use rand::{CryptoRng, RngCore};
@@ -43,7 +43,7 @@ impl Party {
 
         let v_8 = Scalar::from(v) * *INV_EIGHT;
         let v_blinding_8 = v_blinding * *INV_EIGHT;
-        let V = pc_gens.commit(v_8, v_blinding_8).compress();
+        let V = pc_gens.commit(v_8, v_blinding_8);
 
         Ok(PartyAwaitingPosition {
             bp_gens,
@@ -64,7 +64,7 @@ pub struct PartyAwaitingPosition<'a> {
     n: usize,
     v: u64,
     v_blinding: Scalar,
-    V: CompressedEdwardsY,
+    V: EdwardsPoint,
 }
 
 impl<'a> PartyAwaitingPosition<'a> {

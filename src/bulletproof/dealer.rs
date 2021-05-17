@@ -72,7 +72,7 @@ impl<'a> DealerAwaitingBitCommitments<'a> {
 
         let mut input = vec![];
         for bit_commitment in bit_commitments.iter() {
-            input.extend_from_slice(bit_commitment.V_j.as_bytes());
+            input.extend_from_slice(bit_commitment.V_j.compress().as_bytes());
         }
 
         let mut hash_commitments = [0u8; 32];
@@ -247,10 +247,10 @@ impl<'a> DealerAwaitingProofShares<'a> {
         );
 
         Ok(RangeProof {
-            A: self.A.compress(),
-            S: self.S.compress(),
-            T_1: self.T_1.compress(),
-            T_2: self.T_2.compress(),
+            A: self.A,
+            S: self.S,
+            T_1: self.T_1,
+            T_2: self.T_2,
             t_x,
             t_x_blinding,
             e_blinding,

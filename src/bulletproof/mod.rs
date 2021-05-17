@@ -39,7 +39,7 @@ pub fn make_bulletproof<T>(
     rng: &mut T,
     amounts: &[u64],
     blindings: &[Scalar],
-) -> Result<(crate::util::ringct::Bulletproof, Vec<CompressedEdwardsY>), ProofError>
+) -> Result<(crate::util::ringct::Bulletproof, Vec<EdwardsPoint>), ProofError>
 where
     T: RngCore + CryptoRng,
 {
@@ -65,7 +65,7 @@ where
 pub fn verify_bulletproof<T>(
     rng: &mut T,
     proof: crate::util::ringct::Bulletproof,
-    commitments: Vec<CompressedEdwardsY>,
+    commitments: Vec<EdwardsPoint>,
 ) -> Result<(), ProofError>
 where
     T: RngCore + CryptoRng,
@@ -99,13 +99,13 @@ where
 #[derive(Clone, Debug)]
 pub struct RangeProof {
     /// Commitment to the bits of the value
-    A: CompressedEdwardsY,
+    A: EdwardsPoint,
     /// Commitment to the blinding factors
-    S: CompressedEdwardsY,
+    S: EdwardsPoint,
     /// Commitment to the \\(t_1\\) coefficient of \\( t(x) \\)
-    T_1: CompressedEdwardsY,
+    T_1: EdwardsPoint,
     /// Commitment to the \\(t_2\\) coefficient of \\( t(x) \\)
-    T_2: CompressedEdwardsY,
+    T_2: EdwardsPoint,
     /// Evaluation of the polynomial \\(t(x)\\) at the challenge point \\(x\\)
     t_x: Scalar,
     /// Blinding factor for the synthetic commitment to \\(t(x)\\)
@@ -129,7 +129,7 @@ impl RangeProof {
         v_blinding: &Scalar,
         n: usize,
         rng: &mut T,
-    ) -> Result<(RangeProof, CompressedEdwardsY), ProofError> {
+    ) -> Result<(RangeProof, EdwardsPoint), ProofError> {
         let (p, Vs) =
             RangeProof::prove_multiple_with_rng(bp_gens, pc_gens, &[v], &[*v_blinding], n, rng)?;
         Ok((p, Vs[0]))
@@ -147,7 +147,7 @@ impl RangeProof {
         v: u64,
         v_blinding: &Scalar,
         n: usize,
-    ) -> Result<(RangeProof, CompressedEdwardsY), ProofError> {
+    ) -> Result<(RangeProof, EdwardsPoint), ProofError> {
         RangeProof::prove_single_with_rng(
             bp_gens,
             pc_gens,
@@ -166,7 +166,7 @@ impl RangeProof {
         blindings: &[Scalar],
         n: usize,
         rng: &mut T,
-    ) -> Result<(RangeProof, Vec<CompressedEdwardsY>), ProofError> {
+    ) -> Result<(RangeProof, Vec<EdwardsPoint>), ProofError> {
         use self::dealer::*;
         use self::party::*;
 
@@ -223,7 +223,7 @@ impl RangeProof {
         values: &[u64],
         blindings: &[Scalar],
         n: usize,
-    ) -> Result<(RangeProof, Vec<CompressedEdwardsY>), ProofError> {
+    ) -> Result<(RangeProof, Vec<EdwardsPoint>), ProofError> {
         RangeProof::prove_multiple_with_rng(
             bp_gens,
             pc_gens,
@@ -242,7 +242,7 @@ impl RangeProof {
         &self,
         bp_gens: &BulletproofGens,
         pc_gens: &PedersenGens,
-        V: &CompressedEdwardsY,
+        V: &EdwardsPoint,
         n: usize,
         rng: &mut T,
     ) -> Result<(), ProofError> {
@@ -258,7 +258,7 @@ impl RangeProof {
         &self,
         bp_gens: &BulletproofGens,
         pc_gens: &PedersenGens,
-        V: &CompressedEdwardsY,
+        V: &EdwardsPoint,
         n: usize,
     ) -> Result<(), ProofError> {
         self.verify_single_with_rng(bp_gens, pc_gens, V, n, &mut rand::thread_rng())
@@ -271,7 +271,7 @@ impl RangeProof {
         &self,
         bp_gens: &BulletproofGens,
         pc_gens: &PedersenGens,
-        value_commitments: &[CompressedEdwardsY],
+        value_commitments: &[EdwardsPoint],
         n: usize,
         rng: &mut T,
     ) -> Result<(), ProofError> {
@@ -291,15 +291,15 @@ impl RangeProof {
 
         let mut input = vec![];
         for commitment in value_commitments.iter() {
-            input.extend_from_slice(commitment.as_bytes());
+            input.extend_from_slice(commitment.compress().as_bytes());
         }
         let mut hash_commitments = [0u8; 32];
         keccak_256(&input, &mut hash_commitments);
         let hash_commitments = Scalar::from_bytes_mod_order(hash_commitments);
 
         let mut input = hash_commitments.as_bytes().to_vec();
-        input.extend_from_slice(self.A.as_bytes());
-        input.extend_from_slice(self.S.as_bytes());
+        input.extend_from_slice(self.A.compress().as_bytes());
+        input.extend_from_slice(self.S.compress().as_bytes());
 
         let mut y = [0u8; 32];
         keccak_256(&input, &mut y);
@@ -323,8 +323,8 @@ impl RangeProof {
 
         let mut input = z.as_bytes().to_vec();
         input.extend_from_slice(z.as_bytes());
-        input.extend_from_slice(self.T_1.as_bytes());
-        input.extend_from_slice(self.T_2.as_bytes());
+        input.extend_from_slice(self.T_1.compress().as_bytes());
+        input.extend_from_slice(self.T_2.compress().as_bytes());
 
         let mut x = [0u8; 32];
         keccak_256(&input, &mut x);
@@ -387,31 +387,18 @@ impl RangeProof {
                 .chain(g)
                 .chain(h)
                 .chain(value_commitment_scalars),
-            iter::once(self.A.decompress().map(|A| eight * A))
-                .chain(iter::once(self.S.decompress().map(|S| eight * S)))
-                .chain(iter::once(self.T_1.decompress().map(|T_1| eight * T_1)))
-                .chain(iter::once(self.T_2.decompress().map(|T_2| eight * T_2)))
-                .chain(
-                    self.ipp_proof
-                        .L_vec
-                        .iter()
-                        .map(|L| L.decompress().map(|L| eight * L)),
-                )
-                .chain(
-                    self.ipp_proof
-                        .R_vec
-                        .iter()
-                        .map(|R| R.decompress().map(|R| eight * R)),
-                )
-                .chain(iter::once(Some(pc_gens.B_blinding)))
-                .chain(iter::once(Some(pc_gens.B)))
-                .chain(bp_gens.G(n, m).map(|&x| Some(x)))
-                .chain(bp_gens.H(n, m).map(|&x| Some(x)))
-                .chain(
-                    value_commitments
-                        .iter()
-                        .map(|V| V.decompress().map(|V| eight * V)),
-                ),
+            iter::once(eight * self.A)
+                .chain(iter::once(eight * self.S))
+                .chain(iter::once(eight * self.T_1))
+                .chain(iter::once(eight * self.T_2))
+                .chain(self.ipp_proof.L_vec.iter().map(|L| eight * L))
+                .chain(self.ipp_proof.R_vec.iter().map(|R| eight * R))
+                .chain(iter::once(pc_gens.B_blinding))
+                .chain(iter::once(pc_gens.B))
+                .chain(bp_gens.G(n, m).copied())
+                .chain(bp_gens.H(n, m).copied())
+                .chain(value_commitments.iter().map(|V| eight * V))
+                .map(Some),
         )
         .ok_or(ProofError::VerificationError)?;
 
@@ -432,7 +419,7 @@ impl RangeProof {
         &self,
         bp_gens: &BulletproofGens,
         pc_gens: &PedersenGens,
-        value_commitments: &[CompressedEdwardsY],
+        value_commitments: &[EdwardsPoint],
         n: usize,
     ) -> Result<(), ProofError> {
         self.verify_multiple_with_rng(
@@ -553,16 +540,16 @@ impl From<RangeProof> for crate::util::ringct::Bulletproof {
 
         Self {
             A: Key {
-                key: from.A.to_bytes(),
+                key: from.A.compress().to_bytes(),
             },
             S: Key {
-                key: from.S.to_bytes(),
+                key: from.S.compress().to_bytes(),
             },
             T1: Key {
-                key: from.T_1.to_bytes(),
+                key: from.T_1.compress().to_bytes(),
             },
             T2: Key {
-                key: from.T_2.to_bytes(),
+                key: from.T_2.compress().to_bytes(),
             },
             taux: Key {
                 key: from.t_x_blinding.to_bytes(),
@@ -574,13 +561,17 @@ impl From<RangeProof> for crate::util::ringct::Bulletproof {
                 .ipp_proof
                 .L_vec
                 .iter()
-                .map(|l| Key { key: l.to_bytes() })
+                .map(|l| Key {
+                    key: l.compress().to_bytes(),
+                })
                 .collect(),
             R: from
                 .ipp_proof
                 .R_vec
                 .iter()
-                .map(|r| Key { key: r.to_bytes() })
+                .map(|r| Key {
+                    key: r.compress().to_bytes(),
+                })
                 .collect(),
             a: Key {
                 key: from.ipp_proof.a.to_bytes(),
@@ -595,34 +586,58 @@ impl From<RangeProof> for crate::util::ringct::Bulletproof {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct NonCanonicalScalar;
+#[derive(Debug)]
+pub enum ConversionError {
+    InvalidPoint,
+    NonCanonicalScalar,
+}
 
 impl TryFrom<crate::util::ringct::Bulletproof> for RangeProof {
-    type Error = NonCanonicalScalar;
+    type Error = ConversionError;
 
-    fn try_from(from: crate::util::ringct::Bulletproof) -> Result<Self, NonCanonicalScalar> {
+    fn try_from(from: crate::util::ringct::Bulletproof) -> Result<Self, ConversionError> {
         Ok(Self {
-            A: CompressedEdwardsY::from_slice(&from.A.key),
-            S: CompressedEdwardsY::from_slice(&from.S.key),
-            T_1: CompressedEdwardsY::from_slice(&from.T1.key),
-            T_2: CompressedEdwardsY::from_slice(&from.T2.key),
-            t_x: Scalar::from_canonical_bytes(from.t.key).ok_or(NonCanonicalScalar)?,
-            t_x_blinding: Scalar::from_canonical_bytes(from.taux.key).ok_or(NonCanonicalScalar)?,
-            e_blinding: Scalar::from_canonical_bytes(from.mu.key).ok_or(NonCanonicalScalar)?,
+            A: CompressedEdwardsY::from_slice(&from.A.key)
+                .decompress()
+                .ok_or(ConversionError::InvalidPoint)?,
+            S: CompressedEdwardsY::from_slice(&from.S.key)
+                .decompress()
+                .ok_or(ConversionError::InvalidPoint)?,
+            T_1: CompressedEdwardsY::from_slice(&from.T1.key)
+                .decompress()
+                .ok_or(ConversionError::InvalidPoint)?,
+            T_2: CompressedEdwardsY::from_slice(&from.T2.key)
+                .decompress()
+                .ok_or(ConversionError::InvalidPoint)?,
+            t_x: Scalar::from_canonical_bytes(from.t.key)
+                .ok_or(ConversionError::NonCanonicalScalar)?,
+            t_x_blinding: Scalar::from_canonical_bytes(from.taux.key)
+                .ok_or(ConversionError::NonCanonicalScalar)?,
+            e_blinding: Scalar::from_canonical_bytes(from.mu.key)
+                .ok_or(ConversionError::NonCanonicalScalar)?,
             ipp_proof: InnerProductProof {
                 L_vec: from
                     .L
                     .iter()
-                    .map(|L| CompressedEdwardsY::from_slice(&L.key))
-                    .collect(),
+                    .map(|L| {
+                        CompressedEdwardsY::from_slice(&L.key)
+                            .decompress()
+                            .ok_or(ConversionError::InvalidPoint)
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
                 R_vec: from
                     .R
                     .iter()
-                    .map(|R| CompressedEdwardsY::from_slice(&R.key))
-                    .collect(),
-                a: Scalar::from_canonical_bytes(from.a.key).ok_or(NonCanonicalScalar)?,
-                b: Scalar::from_canonical_bytes(from.b.key).ok_or(NonCanonicalScalar)?,
+                    .map(|R| {
+                        CompressedEdwardsY::from_slice(&R.key)
+                            .decompress()
+                            .ok_or(ConversionError::InvalidPoint)
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
+                a: Scalar::from_canonical_bytes(from.a.key)
+                    .ok_or(ConversionError::NonCanonicalScalar)?,
+                b: Scalar::from_canonical_bytes(from.b.key)
+                    .ok_or(ConversionError::NonCanonicalScalar)?,
             },
         })
     }
@@ -775,19 +790,27 @@ mod tests {
             A: CompressedEdwardsY::from_slice(
                 &hex::decode("78ddbccf2e1ced3b68835600768770ebe3e219db19a35f5ebe6495ec58c763d4")
                     .unwrap(),
-            ),
+            )
+            .decompress()
+            .unwrap(),
             S: CompressedEdwardsY::from_slice(
                 &hex::decode("e61bd5f461172a14d31149207a9f473289f89dbf4c42dff5f7cbcbd87a12210e")
                     .unwrap(),
-            ),
+            )
+            .decompress()
+            .unwrap(),
             T_1: CompressedEdwardsY::from_slice(
                 &hex::decode("74989471b2e26755d60128a0a54de6e8d0a3d30e9c6810f885f09be27339765f")
                     .unwrap(),
-            ),
+            )
+            .decompress()
+            .unwrap(),
             T_2: CompressedEdwardsY::from_slice(
                 &hex::decode("bd0b0fb338cc8f16a3c8b05f504a34223263f6fb61865cff29f62d7731581a85")
                     .unwrap(),
-            ),
+            )
+            .decompress()
+            .unwrap(),
             t_x: Scalar::from_canonical_bytes(
                 hex::decode("0f42ab37f27887291eb3f3126708e5ff4fdf4c4499bc43c61516684e9f176100")
                     .unwrap()
@@ -820,7 +843,11 @@ mod tests {
                     "5d8f4d63b5ce10d9ab579c30da28108c13abd54e876a0308636fdc8b0e69d059",
                 ]
                 .iter()
-                .map(|k| CompressedEdwardsY::from_slice(&hex::decode(k).unwrap()))
+                .map(|k| {
+                    CompressedEdwardsY::from_slice(&hex::decode(k).unwrap())
+                        .decompress()
+                        .unwrap()
+                })
                 .collect(),
                 R_vec: vec![
                     "88f99b0bfb5a4e052b209400594c2c423a95497e3be315d9e8fbb4410bd73102",
@@ -832,7 +859,11 @@ mod tests {
                     "e5ede5ed6e0d603a668baa586bfa2139553ef487c1a9474fbafaa5ba5b8760d0",
                 ]
                 .iter()
-                .map(|k| CompressedEdwardsY::from_slice(&hex::decode(k).unwrap()))
+                .map(|k| {
+                    CompressedEdwardsY::from_slice(&hex::decode(k).unwrap())
+                        .decompress()
+                        .unwrap()
+                })
                 .collect(),
                 a: Scalar::from_canonical_bytes(
                     hex::decode("d782e742fafc78de94aa51bfd89ec61cbf54180093b3617b694652e6a4cea005")
@@ -856,12 +887,16 @@ mod tests {
                 hex::decode("5bef186a6d084a0372e3d91446f6b7ec4a900ab7b0abf7b205c5f2b2f105b32c")
                     .unwrap()
                     .as_slice(),
-            ),
+            )
+            .decompress()
+            .unwrap(),
             CompressedEdwardsY::from_slice(
                 hex::decode("22d187e6a788eaeecf0fd4d31f1718e03c259f39fd120fd8ef660ddb1c36a852")
                     .unwrap()
                     .as_slice(),
-            ),
+            )
+            .decompress()
+            .unwrap(),
         ];
 
         assert!(proof

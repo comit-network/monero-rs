@@ -3,7 +3,7 @@
 use core::borrow::Borrow;
 use core::iter;
 
-use curve25519_dalek::edwards::{CompressedEdwardsY, EdwardsPoint};
+use curve25519_dalek::edwards::EdwardsPoint;
 use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::traits::VartimeMultiscalarMul;
 use keccak_hash::keccak_256;
@@ -13,8 +13,8 @@ use crate::bulletproof::INV_EIGHT;
 
 #[derive(Clone, Debug)]
 pub struct InnerProductProof {
-    pub(crate) L_vec: Vec<CompressedEdwardsY>,
-    pub(crate) R_vec: Vec<CompressedEdwardsY>,
+    pub(crate) L_vec: Vec<EdwardsPoint>,
+    pub(crate) R_vec: Vec<EdwardsPoint>,
     pub(crate) a: Scalar,
     pub(crate) b: Scalar,
 }
@@ -95,8 +95,7 @@ impl InnerProductProof {
                     .chain(iter::once(c_L))
                     .map(|s| s * *INV_EIGHT),
                 G_R.iter().chain(H_L.iter()).chain(iter::once(Q)),
-            )
-            .compress();
+            );
 
             let R = EdwardsPoint::vartime_multiscalar_mul(
                 a_R.iter()
@@ -110,15 +109,14 @@ impl InnerProductProof {
                     .chain(iter::once(c_R))
                     .map(|s| s * *INV_EIGHT),
                 G_L.iter().chain(H_R.iter()).chain(iter::once(Q)),
-            )
-            .compress();
+            );
 
             L_vec.push(L);
             R_vec.push(R);
 
             let mut input = w.as_bytes().to_vec();
-            input.extend_from_slice(L.as_bytes());
-            input.extend_from_slice(R.as_bytes());
+            input.extend_from_slice(L.compress().as_bytes());
+            input.extend_from_slice(R.compress().as_bytes());
 
             let mut u = [0u8; 32];
             keccak_256(&input, &mut u);
@@ -162,8 +160,7 @@ impl InnerProductProof {
                     .chain(iter::once(&c_L))
                     .map(|s| s * *INV_EIGHT),
                 G_R.iter().chain(H_L.iter()).chain(iter::once(Q)),
-            )
-            .compress();
+            );
 
             let R = EdwardsPoint::vartime_multiscalar_mul(
                 a_R.iter()
@@ -171,15 +168,14 @@ impl InnerProductProof {
                     .chain(iter::once(&c_R))
                     .map(|s| s * *INV_EIGHT),
                 G_L.iter().chain(H_R.iter()).chain(iter::once(Q)),
-            )
-            .compress();
+            );
 
             L_vec.push(L);
             R_vec.push(R);
 
             let mut input = prev_u.as_bytes().to_vec();
-            input.extend_from_slice(L.as_bytes());
-            input.extend_from_slice(R.as_bytes());
+            input.extend_from_slice(L.compress().as_bytes());
+            input.extend_from_slice(R.compress().as_bytes());
 
             let mut u = [0u8; 32];
             keccak_256(&input, &mut u);
@@ -237,8 +233,8 @@ impl InnerProductProof {
         let mut challenges = Vec::with_capacity(lg_n);
         for (L, R) in self.L_vec.iter().zip(self.R_vec.iter()) {
             let mut input = prev_u.as_bytes().to_vec();
-            input.extend_from_slice(L.as_bytes());
-            input.extend_from_slice(R.as_bytes());
+            input.extend_from_slice(L.compress().as_bytes());
+            input.extend_from_slice(R.compress().as_bytes());
 
             let mut u = [0u8; 32];
             keccak_256(&input, &mut u);
@@ -322,25 +318,9 @@ impl InnerProductProof {
         let neg_u_inv_sq = u_inv_sq.iter().map(|ui| -ui);
 
         let eight = Scalar::from(8u8);
-        let Ls = self
-            .L_vec
-            .iter()
-            .map(|p| {
-                p.decompress()
-                    .map(|p| eight * p)
-                    .ok_or(ProofError::VerificationError)
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+        let Ls = self.L_vec.iter().map(|p| eight * p).collect::<Vec<_>>();
 
-        let Rs = self
-            .R_vec
-            .iter()
-            .map(|p| {
-                p.decompress()
-                    .map(|p| eight * p)
-                    .ok_or(ProofError::VerificationError)
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+        let Rs = self.R_vec.iter().map(|p| eight * p).collect::<Vec<_>>();
 
         let expect_P = EdwardsPoint::vartime_multiscalar_mul(
             iter::once(self.a * self.b)
