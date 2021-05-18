@@ -35,6 +35,9 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "serde_support")]
 use serde_big_array_unchecked_docs::*;
 
+use crate::util::key::H;
+use curve25519_dalek::constants::ED25519_BASEPOINT_POINT;
+use curve25519_dalek::edwards::EdwardsPoint;
 use thiserror::Error;
 
 /// Serde support for array's bigger than 32 items.
@@ -172,16 +175,17 @@ impl EcdhInfo {
         )
     }
 
-    /// TODO
+    /// Opens the commitment and verifies it against the given one.
     pub fn open_commitment(
         &self,
         view_pair: &ViewPair,
         tx_pubkey: &PublicKey,
         index: usize,
-    ) -> (u64, Scalar) {
+        candidate_commitment: &EdwardsPoint,
+    ) -> Option<Opening> {
         let shared_key = KeyGenerator::from_key(view_pair, *tx_pubkey).get_rvn_scalar(index);
 
-        match self {
+        let (amount, blinding_factor) = match self {
             // ecdhDecode in rctOps.cpp else
             EcdhInfo::Standard { mask, amount } => {
                 let shared_sec1 = hash::Hash::hash(shared_key.as_bytes()).to_bytes();
@@ -205,8 +209,34 @@ impl EcdhInfo {
 
                 (u64::from_le_bytes(amount), mask)
             }
+        };
+
+        let amount_scalar = Scalar::from(amount);
+
+        let expected_commitment = ED25519_BASEPOINT_POINT * blinding_factor
+            + H.point.decompress().unwrap() * amount_scalar;
+
+        if &expected_commitment != candidate_commitment {
+            return None;
         }
+
+        Some(Opening {
+            amount,
+            blinding_factor,
+            commitment: expected_commitment,
+        })
     }
+}
+
+/// The result of opening the commitment inside the transaction.
+#[derive(Debug)]
+pub struct Opening {
+    /// The original amount of the output.
+    pub amount: u64,
+    /// The blinding factor used to blind the amount.
+    pub blinding_factor: Scalar,
+    /// The commitment used to verify the blinded amount.
+    pub commitment: EdwardsPoint,
 }
 
 fn xor_amount(amount: [u8; 8], shared_key: Scalar) -> [u8; 8] {
