@@ -213,8 +213,7 @@ impl EcdhInfo {
 
         let amount_scalar = Scalar::from(amount);
 
-        let expected_commitment = ED25519_BASEPOINT_POINT * blinding_factor
-            + H.point.decompress().unwrap() * amount_scalar;
+        let expected_commitment = ED25519_BASEPOINT_POINT * blinding_factor + *H * amount_scalar;
 
         if &expected_commitment != candidate_commitment {
             return None;

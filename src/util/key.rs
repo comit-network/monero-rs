@@ -75,6 +75,7 @@ use thiserror::Error;
 use crate::consensus::encode::{self, Decodable, Encodable};
 use crate::cryptonote::hash;
 
+use conquer_once::Lazy;
 #[cfg(feature = "serde_support")]
 use serde::{Deserialize, Serialize};
 
@@ -502,11 +503,13 @@ impl hash::Hashable for PublicKey {
 /// Alternative generator `H` used for pedersen commitments, as defined in
 /// [`rctTypes.h`](https://github.com/monero-project/monero/blob/master/src/ringct/rctTypes.h#L555)
 /// in the Monero codebase.
-pub const H: PublicKey = PublicKey {
-    point: CompressedEdwardsY(hex!(
+pub static H: Lazy<EdwardsPoint> = Lazy::new(|| {
+    CompressedEdwardsY(hex!(
         "8b655970153799af2aeadc9ff1add0ea6c7251d54154cfa92c173a0dd39c1f94"
-    )),
-};
+    ))
+    .decompress()
+    .unwrap()
+});
 
 /// Two private keys representing the view and the spend keys.
 #[derive(Debug)]
