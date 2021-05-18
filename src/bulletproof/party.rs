@@ -9,7 +9,7 @@
 use core::iter;
 
 use clear_on_drop::clear::Clear;
-use curve25519_dalek::edwards::{CompressedEdwardsY, EdwardsPoint};
+use curve25519_dalek::edwards::EdwardsPoint;
 use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::traits::MultiscalarMul;
 use rand::{CryptoRng, RngCore};
@@ -18,7 +18,7 @@ use crate::bulletproof::generators::{BulletproofGens, PedersenGens};
 use crate::bulletproof::messages::*;
 use crate::bulletproof::util;
 use crate::bulletproof::MpcError;
-use crate::bulletproof::INV_EIGHT;
+use crate::util::INV_EIGHT;
 
 /// Used to construct a party for the aggregated rangeproof MPC
 /// protocol.
@@ -41,9 +41,9 @@ impl Party {
             return Err(MpcError::InvalidGeneratorsLength);
         }
 
-        let v_8 = Scalar::from(v) * *INV_EIGHT;
-        let v_blinding_8 = v_blinding * *INV_EIGHT;
-        let V = pc_gens.commit(v_8, v_blinding_8).compress();
+        let v_8 = Scalar::from(v) * INV_EIGHT;
+        let v_blinding_8 = v_blinding * INV_EIGHT;
+        let V = pc_gens.commit(v_8, v_blinding_8);
 
         Ok(PartyAwaitingPosition {
             bp_gens,
@@ -64,7 +64,7 @@ pub struct PartyAwaitingPosition<'a> {
     n: usize,
     v: u64,
     v_blinding: Scalar,
-    V: CompressedEdwardsY,
+    V: EdwardsPoint,
 }
 
 impl<'a> PartyAwaitingPosition<'a> {
@@ -91,10 +91,10 @@ impl<'a> PartyAwaitingPosition<'a> {
 
         let bp_share = self.bp_gens.share(j);
 
-        let a_blinding = Scalar::random(rng) * *INV_EIGHT;
+        let a_blinding = Scalar::random(rng) * INV_EIGHT;
 
         // Compute A = <a_L, G> + <a_R, H> + a_blinding * B_blinding
-        let mut A = self.pc_gens.B_blinding * a_blinding * *INV_EIGHT;
+        let mut A = self.pc_gens.B_blinding * a_blinding * INV_EIGHT;
 
         use subtle::{Choice, ConditionallySelectable};
         for (i, (G_i, H_i)) in bp_share.G(self.n).zip(bp_share.H(self.n)).enumerate() {
@@ -103,7 +103,7 @@ impl<'a> PartyAwaitingPosition<'a> {
             let v_i = Choice::from(((self.v >> i) & 1) as u8);
             let mut point = -H_i;
             point.conditional_assign(G_i, v_i);
-            A += point * *INV_EIGHT;
+            A += point * INV_EIGHT;
         }
 
         let s_blinding = Scalar::random(rng);
@@ -118,7 +118,7 @@ impl<'a> PartyAwaitingPosition<'a> {
                 .chain(bp_share.G(self.n))
                 .chain(bp_share.H(self.n)),
         );
-        let S = S * *INV_EIGHT;
+        let S = S * INV_EIGHT;
 
         // Return next state and all commitments
         let bit_commitment = BitCommitment {
@@ -212,10 +212,10 @@ impl<'a> PartyAwaitingBitChallenge<'a> {
         let t_2_blinding = Scalar::random(rng);
         let T_1 = self
             .pc_gens
-            .commit(t_poly.1 * *INV_EIGHT, t_1_blinding * *INV_EIGHT);
+            .commit(t_poly.1 * INV_EIGHT, t_1_blinding * INV_EIGHT);
         let T_2 = self
             .pc_gens
-            .commit(t_poly.2 * *INV_EIGHT, t_2_blinding * *INV_EIGHT);
+            .commit(t_poly.2 * INV_EIGHT, t_2_blinding * INV_EIGHT);
 
         let poly_commitment = PolyCommitment {
             T_1_j: T_1,

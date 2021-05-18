@@ -63,9 +63,7 @@ use crate::consensus::encode::{Encodable, VarInt};
 use crate::cryptonote::hash;
 use crate::cryptonote::subaddress::{self, get_spend_secret_key, Index};
 use crate::util::key::{KeyPair, PrivateKey, PublicKey, ViewPair};
-
-/// Special factor used in all `vR` and `rV` multiplications.
-pub const MONERO_MUL_FACTOR: u8 = 8;
+use crate::util::EIGHT;
 
 /// Helper to generate onetime public keys (ephemeral keys) used in transactions.
 #[derive(Debug, Clone)]
@@ -81,7 +79,7 @@ impl KeyGenerator {
     /// generate onetime keys for output indexes from an address when sending funds.
     pub fn from_random(view: PublicKey, spend: PublicKey, random: PrivateKey) -> Self {
         // Computes r*8*V
-        let rv = random * MONERO_MUL_FACTOR * &view;
+        let rv = random * EIGHT * &view;
         KeyGenerator { spend, rv }
     }
 
@@ -89,7 +87,7 @@ impl KeyGenerator {
     /// used to scan if some outputs contains onetime keys owned by the view pair.
     pub fn from_key(keys: &ViewPair, random: PublicKey) -> Self {
         // Computes v*8*R
-        let rv = keys.view * MONERO_MUL_FACTOR * &random;
+        let rv = keys.view * EIGHT * &random;
         KeyGenerator {
             spend: keys.spend,
             rv,

@@ -2,7 +2,7 @@
 //! between the parties and the dealer in an aggregated multiparty
 //! computation protocol.
 
-use curve25519_dalek::edwards::{CompressedEdwardsY, EdwardsPoint};
+use curve25519_dalek::edwards::EdwardsPoint;
 use curve25519_dalek::scalar::Scalar;
 
 use crate::bulletproof::generators::BulletproofGens;
@@ -10,7 +10,7 @@ use crate::bulletproof::generators::BulletproofGens;
 /// A commitment to the bits of a party's value.
 #[derive(Copy, Clone, Debug)]
 pub struct BitCommitment {
-    pub(super) V_j: CompressedEdwardsY,
+    pub(super) V_j: EdwardsPoint,
     pub(super) A_j: EdwardsPoint,
     pub(super) S_j: EdwardsPoint,
 }

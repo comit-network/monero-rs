@@ -1,5 +1,6 @@
-use crate::clsag::{array_map, compute_L, compute_R, INV_EIGHT, RING_SIZE};
+use crate::clsag::{array_map, compute_L, compute_R, RING_SIZE};
 use crate::util::ringct::Clsag;
+use crate::util::INV_EIGHT;
 use curve25519_dalek::edwards::EdwardsPoint;
 use curve25519_dalek::scalar::Scalar;
 

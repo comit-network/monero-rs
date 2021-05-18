@@ -17,14 +17,6 @@ use std::fmt::Debug;
 
 const RING_SIZE: usize = 11;
 
-const INV_EIGHT: Scalar = Scalar::from_bits([
-    121, 47, 220, 226, 41, 229, 6, 97, 208, 218, 28, 125, 179, 157, 211, 7, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 6,
-]);
-const EIGHT: Scalar = Scalar::from_bits([
-    8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-]);
-
 #[allow(non_snake_case)]
 // L_i = s_i * G + c_p * pk_i + c_c * (commitment_i - pseudoutcommitment)
 fn compute_L(
@@ -75,20 +67,6 @@ mod tests {
     use super::*;
     use crate::util::key::H;
     use rand::SeedableRng;
-
-    #[test]
-    fn const_is_inv_eight() {
-        let inv_eight = Scalar::from(8u8).invert();
-
-        assert_eq!(inv_eight, INV_EIGHT);
-    }
-
-    #[test]
-    fn const_is_eight() {
-        let eight = Scalar::from(8u8);
-
-        assert_eq!(eight, EIGHT);
-    }
 
     #[test]
     fn sign_and_verify_at_every_index() {
