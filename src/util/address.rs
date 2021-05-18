@@ -44,8 +44,9 @@ use base58_monero::base58;
 use keccak_hash::keccak_256;
 
 use crate::network::{self, Network};
-use crate::util::key::{KeyPair, PublicKey, ViewPair};
+use crate::util::key::{EdwardsPointExt, KeyPair, PublicKey, ViewPair};
 
+use curve25519_dalek::edwards::CompressedEdwardsY;
 use thiserror::Error;
 
 /// Potential errors encountered when manipulating addresses.
@@ -151,9 +152,9 @@ pub struct Address {
     /// The address type.
     pub addr_type: AddressType,
     /// The address spend public key.
-    pub public_spend: PublicKey,
+    pub public_spend: CompressedEdwardsY,
     /// The address view public key.
-    pub public_view: PublicKey,
+    pub public_view: CompressedEdwardsY,
 }
 
 impl Address {
@@ -162,8 +163,8 @@ impl Address {
         Address {
             network,
             addr_type: AddressType::Standard,
-            public_spend,
-            public_view,
+            public_spend: public_spend.compress(),
+            public_view: public_view.compress(),
         }
     }
 
@@ -176,8 +177,8 @@ impl Address {
         Address {
             network,
             addr_type: AddressType::SubAddress,
-            public_spend,
-            public_view,
+            public_spend: public_spend.compress(),
+            public_view: public_view.compress(),
         }
     }
 
@@ -191,8 +192,8 @@ impl Address {
         Address {
             network,
             addr_type: AddressType::Integrated(payment_id),
-            public_spend,
-            public_view,
+            public_spend: public_spend.compress(),
+            public_view: public_view.compress(),
         }
     }
 
@@ -202,8 +203,8 @@ impl Address {
         Address {
             network,
             addr_type: AddressType::Standard,
-            public_spend: keys.spend,
-            public_view,
+            public_spend: keys.spend.compress(),
+            public_view: public_view.compress(),
         }
     }
 
@@ -214,8 +215,8 @@ impl Address {
         Address {
             network,
             addr_type: AddressType::Standard,
-            public_spend,
-            public_view,
+            public_spend: public_spend.compress(),
+            public_view: public_view.compress(),
         }
     }
 
@@ -224,10 +225,11 @@ impl Address {
     pub fn from_bytes(bytes: &[u8]) -> Result<Address, Error> {
         let network = Network::from_u8(bytes[0])?;
         let addr_type = AddressType::from_slice(&bytes, network)?;
-        let public_spend =
-            PublicKey::from_slice(&bytes[1..33]).map_err(|_| Error::InvalidFormat)?;
-        let public_view =
-            PublicKey::from_slice(&bytes[33..65]).map_err(|_| Error::InvalidFormat)?;
+        let public_spend = CompressedEdwardsY::from_slice(&bytes[1..33]);
+        let public_view = CompressedEdwardsY::from_slice(&bytes[33..65]);
+
+        public_spend.decompress().ok_or(Error::InvalidFormat)?;
+        public_view.decompress().ok_or(Error::InvalidFormat)?;
 
         let mut verify_checksum = [0u8; 32];
         let (checksum_bytes, checksum) = match addr_type {
@@ -312,15 +314,16 @@ mod tests {
     use std::str::FromStr;
 
     use super::{base58, Address, AddressType, Network, PaymentId, PublicKey};
+    use std::convert::TryFrom;
 
     #[test]
     fn deserialize_address() {
-        let pub_spend = PublicKey::from_slice(&[
+        let pub_spend = PublicKey::try_from([
             226, 187, 17, 117, 6, 188, 105, 177, 58, 207, 205, 42, 205, 229, 251, 129, 118, 253,
             21, 245, 49, 67, 36, 75, 62, 12, 80, 90, 244, 194, 108, 210,
         ])
         .unwrap();
-        let pub_view = PublicKey::from_slice(&[
+        let pub_view = PublicKey::try_from([
             220, 115, 195, 55, 189, 88, 136, 78, 63, 32, 41, 33, 168, 205, 245, 3, 139, 234, 109,
             64, 198, 179, 53, 108, 247, 77, 183, 25, 172, 59, 113, 115,
         ])
@@ -343,12 +346,12 @@ mod tests {
 
     #[test]
     fn deserialize_integrated_address() {
-        let pub_spend = PublicKey::from_slice(&[
+        let pub_spend = PublicKey::try_from([
             17, 81, 127, 230, 166, 35, 81, 36, 161, 94, 154, 206, 60, 98, 195, 62, 12, 11, 234,
             133, 228, 196, 77, 3, 68, 188, 84, 78, 94, 109, 238, 44,
         ])
         .unwrap();
-        let pub_view = PublicKey::from_slice(&[
+        let pub_view = PublicKey::try_from([
             115, 212, 211, 204, 198, 30, 73, 70, 235, 52, 160, 200, 39, 215, 134, 239, 249, 129,
             47, 156, 14, 116, 18, 191, 112, 207, 139, 208, 54, 59, 92, 115,
         ])
@@ -370,12 +373,12 @@ mod tests {
 
     #[test]
     fn deserialize_sub_address() {
-        let pub_spend = PublicKey::from_slice(&[
+        let pub_spend = PublicKey::try_from([
             212, 104, 103, 28, 131, 98, 226, 228, 37, 244, 133, 145, 213, 157, 184, 232, 6, 146,
             127, 69, 187, 95, 33, 143, 9, 102, 181, 189, 230, 223, 231, 7,
         ])
         .unwrap();
-        let pub_view = PublicKey::from_slice(&[
+        let pub_view = PublicKey::try_from([
             154, 155, 57, 25, 23, 70, 165, 134, 222, 126, 85, 60, 127, 96, 21, 243, 108, 152, 150,
             87, 66, 59, 161, 121, 206, 130, 170, 233, 69, 102, 128, 103,
         ])

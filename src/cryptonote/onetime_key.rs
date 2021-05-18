@@ -27,7 +27,7 @@
 //! use monero::{PublicKey, PrivateKey};
 //! use monero::cryptonote::onetime_key::SubKeyChecker;
 //! use monero::cryptonote::subaddress::Index;
-//! use monero::util::key::ViewPair;
+//! use monero::util::key::{ViewPair, EdwardsPointExt, ScalarExt};
 //!
 //! let view = PrivateKey::from_str("bcfdda53205318e1c14fa0ddca1a45df363bb427972981d0249d0f4652a7df07").unwrap();
 //! let secret_spend = PrivateKey::from_str("e5f4301d32f3bdaef814a835a18aaaa24b13cc76cf01a832a7852faf9322e907").unwrap();
@@ -39,11 +39,11 @@
 //!  };
 //!
 //! let one_time_pk =
-//!     PublicKey::from_str("e3e77faca64b5997ac1f75763e87713d03d9e2896edec65843ffd2970ef1dde6")
+//!     PublicKey::from_hex("e3e77faca64b5997ac1f75763e87713d03d9e2896edec65843ffd2970ef1dde6")
 //!         .unwrap();
 //!
 //! let tx_pubkey =
-//!     PublicKey::from_str("5d1402db663eda8cef4f6782b66321e4a990f746aca249c973e098ba2c0837c1")
+//!     PublicKey::from_hex("5d1402db663eda8cef4f6782b66321e4a990f746aca249c973e098ba2c0837c1")
 //!         .unwrap();
 //!
 //! let checker = SubKeyChecker::new(&viewpair, 0..3, 0..3);
@@ -62,8 +62,9 @@ use std::ops::Range;
 use crate::consensus::encode::{Encodable, VarInt};
 use crate::cryptonote::hash;
 use crate::cryptonote::subaddress::{self, get_spend_secret_key, Index};
-use crate::util::key::{KeyPair, PrivateKey, PublicKey, ViewPair};
+use crate::util::key::{EdwardsPointExt, KeyPair, PrivateKey, PublicKey, ViewPair};
 use crate::util::EIGHT;
+use curve25519_dalek::edwards::CompressedEdwardsY;
 
 /// Helper to generate onetime public keys (ephemeral keys) used in transactions.
 #[derive(Debug, Clone)]
@@ -79,7 +80,7 @@ impl KeyGenerator {
     /// generate onetime keys for output indexes from an address when sending funds.
     pub fn from_random(view: PublicKey, spend: PublicKey, random: PrivateKey) -> Self {
         // Computes r*8*V
-        let rv = random * EIGHT * &view;
+        let rv = random * EIGHT * view;
         KeyGenerator { spend, rv }
     }
 
@@ -87,7 +88,7 @@ impl KeyGenerator {
     /// used to scan if some outputs contains onetime keys owned by the view pair.
     pub fn from_key(keys: &ViewPair, random: PublicKey) -> Self {
         // Computes v*8*R
-        let rv = keys.view * EIGHT * &random;
+        let rv = keys.view * EIGHT * random;
         KeyGenerator {
             spend: keys.spend,
             rv,
@@ -128,7 +129,7 @@ impl KeyGenerator {
 #[derive(Debug, Clone)]
 pub struct SubKeyChecker<'a> {
     /// Table of public spend keys and their corresponding indexes.
-    pub table: HashMap<PublicKey, Index>,
+    pub table: HashMap<CompressedEdwardsY, Index>,
     /// The root view pair `(v, S)`.
     pub keys: &'a ViewPair,
 }
@@ -145,7 +146,7 @@ impl<'a> SubKeyChecker<'a> {
                     minor: min,
                 };
                 let spend = subaddress::get_spend_public_key(keys, index);
-                table.insert(spend, index);
+                table.insert(spend.compress(), index);
             });
         });
         SubKeyChecker { table, keys }
@@ -158,7 +159,7 @@ impl<'a> SubKeyChecker<'a> {
         let keygen = KeyGenerator::from_key(self.keys, *tx_pubkey);
         // D' = P - Hs(v*8*R || n)*G
         self.table
-            .get(&(key - PublicKey::from_private_key(&keygen.get_rvn_scalar(index))))
+            .get(&(key - PublicKey::from_private_key(&keygen.get_rvn_scalar(index))).compress())
     }
 }
 
@@ -203,23 +204,20 @@ impl<'a> KeyRecoverer<'a> {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
-    use super::{KeyGenerator, KeyRecoverer, SubKeyChecker};
+    use super::*;
     use crate::cryptonote::subaddress::Index;
     use crate::util::key::{KeyPair, PrivateKey, PublicKey, ViewPair};
+    use hex_literal::hex;
+    use std::convert::TryFrom;
 
     #[test]
     fn one_time_key_generator() {
-        let secret_view = PrivateKey::from_str(
-            "bcfdda53205318e1c14fa0ddca1a45df363bb427972981d0249d0f4652a7df07",
-        )
-        .unwrap();
-
-        let secret_spend = PrivateKey::from_str(
-            "e5f4301d32f3bdaef814a835a18aaaa24b13cc76cf01a832a7852faf9322e907",
-        )
-        .unwrap();
+        let secret_view = PrivateKey::from_bits(hex!(
+            "bcfdda53205318e1c14fa0ddca1a45df363bb427972981d0249d0f4652a7df07"
+        ));
+        let secret_spend = PrivateKey::from_bits(hex!(
+            "e5f4301d32f3bdaef814a835a18aaaa24b13cc76cf01a832a7852faf9322e907"
+        ));
 
         let public_spend = PublicKey::from_private_key(&secret_spend);
 
@@ -228,13 +226,15 @@ mod tests {
             spend: public_spend,
         };
 
-        let one_time_pk =
-            PublicKey::from_str("e3e77faca64b5997ac1f75763e87713d03d9e2896edec65843ffd2970ef1dde6")
-                .unwrap();
+        let one_time_pk = PublicKey::try_from(hex!(
+            "e3e77faca64b5997ac1f75763e87713d03d9e2896edec65843ffd2970ef1dde6"
+        ))
+        .unwrap();
 
-        let tx_pubkey =
-            PublicKey::from_str("5d1402db663eda8cef4f6782b66321e4a990f746aca249c973e098ba2c0837c1")
-                .unwrap();
+        let tx_pubkey = PublicKey::try_from(hex!(
+            "5d1402db663eda8cef4f6782b66321e4a990f746aca249c973e098ba2c0837c1"
+        ))
+        .unwrap();
 
         let generator = KeyGenerator::from_key(&viewpair, tx_pubkey);
 
@@ -245,35 +245,35 @@ mod tests {
 
     #[test]
     fn one_time_key_recover() {
-        let secret_view = PrivateKey::from_str(
-            "bcfdda53205318e1c14fa0ddca1a45df363bb427972981d0249d0f4652a7df07",
-        )
-        .unwrap();
-
-        let secret_spend = PrivateKey::from_str(
-            "e5f4301d32f3bdaef814a835a18aaaa24b13cc76cf01a832a7852faf9322e907",
-        )
-        .unwrap();
+        let secret_view = PrivateKey::from_bits(hex!(
+            "bcfdda53205318e1c14fa0ddca1a45df363bb427972981d0249d0f4652a7df07"
+        ));
+        let secret_spend = PrivateKey::from_bits(hex!(
+            "e5f4301d32f3bdaef814a835a18aaaa24b13cc76cf01a832a7852faf9322e907"
+        ));
 
         let keypair = KeyPair {
             view: secret_view,
             spend: secret_spend,
         };
 
-        let one_time_sk = PrivateKey::from_str(
-            "afaebe00bcb29e233c2717e4574c7c8b114890571430bd1427d835ed7339050e",
-        )
-        .unwrap();
+        let one_time_sk = PrivateKey::from_bits(hex!(
+            "afaebe00bcb29e233c2717e4574c7c8b114890571430bd1427d835ed7339050e"
+        ));
         let one_time_pk = PublicKey::from_private_key(&one_time_sk);
 
         assert_eq!(
-            "e3e77faca64b5997ac1f75763e87713d03d9e2896edec65843ffd2970ef1dde6",
-            one_time_pk.to_string()
+            PublicKey::try_from(hex!(
+                "e3e77faca64b5997ac1f75763e87713d03d9e2896edec65843ffd2970ef1dde6"
+            ))
+            .unwrap(),
+            one_time_pk
         );
 
-        let tx_pubkey =
-            PublicKey::from_str("5d1402db663eda8cef4f6782b66321e4a990f746aca249c973e098ba2c0837c1")
-                .unwrap();
+        let tx_pubkey = PublicKey::try_from(hex!(
+            "5d1402db663eda8cef4f6782b66321e4a990f746aca249c973e098ba2c0837c1"
+        ))
+        .unwrap();
 
         let index = 1;
         let sub_index = Index::default();
@@ -282,8 +282,10 @@ mod tests {
         let rec_one_time_sk = recoverer.recover(index, sub_index);
 
         assert_eq!(
-            "afaebe00bcb29e233c2717e4574c7c8b114890571430bd1427d835ed7339050e",
-            rec_one_time_sk.to_string()
+            PrivateKey::from_bits(hex!(
+                "afaebe00bcb29e233c2717e4574c7c8b114890571430bd1427d835ed7339050e"
+            )),
+            rec_one_time_sk
         );
 
         assert_eq!(one_time_pk, PublicKey::from_private_key(&rec_one_time_sk));
@@ -291,35 +293,35 @@ mod tests {
 
     #[test]
     fn one_time_subkey_recover() {
-        let secret_view = PrivateKey::from_str(
-            "bcfdda53205318e1c14fa0ddca1a45df363bb427972981d0249d0f4652a7df07",
-        )
-        .unwrap();
-
-        let secret_spend = PrivateKey::from_str(
-            "e5f4301d32f3bdaef814a835a18aaaa24b13cc76cf01a832a7852faf9322e907",
-        )
-        .unwrap();
+        let secret_view = PrivateKey::from_bits(hex!(
+            "bcfdda53205318e1c14fa0ddca1a45df363bb427972981d0249d0f4652a7df07"
+        ));
+        let secret_spend = PrivateKey::from_bits(hex!(
+            "e5f4301d32f3bdaef814a835a18aaaa24b13cc76cf01a832a7852faf9322e907"
+        ));
 
         let keypair = KeyPair {
             view: secret_view,
             spend: secret_spend,
         };
 
-        let one_time_sk = PrivateKey::from_str(
-            "9650bef0bff89132c91f2244d909e0d65acd13415a46efcb933e6c10b7af4c01",
-        )
-        .unwrap();
+        let one_time_sk = PrivateKey::from_bits(hex!(
+            "9650bef0bff89132c91f2244d909e0d65acd13415a46efcb933e6c10b7af4c01"
+        ));
         let one_time_pk = PublicKey::from_private_key(&one_time_sk);
 
         assert_eq!(
-            "b6a2e2f35a93d637ff7d25e20da326cee8e92005d3b18b3c425dabe833656899",
-            one_time_pk.to_string()
+            PublicKey::try_from(hex!(
+                "b6a2e2f35a93d637ff7d25e20da326cee8e92005d3b18b3c425dabe833656899"
+            ))
+            .unwrap(),
+            one_time_pk
         );
 
-        let tx_pubkey =
-            PublicKey::from_str("d6c75cf8c76ac458123f2a498512eb65bb3cecba346c8fcfc516dc0c88518bb9")
-                .unwrap();
+        let tx_pubkey = PublicKey::try_from(hex!(
+            "d6c75cf8c76ac458123f2a498512eb65bb3cecba346c8fcfc516dc0c88518bb9"
+        ))
+        .unwrap();
 
         let index = 1;
         let sub_index = Index { major: 0, minor: 1 };
@@ -328,8 +330,8 @@ mod tests {
         let rec_one_time_sk = recoverer.recover(index, sub_index);
 
         assert_eq!(
-            "9650bef0bff89132c91f2244d909e0d65acd13415a46efcb933e6c10b7af4c01",
-            rec_one_time_sk.to_string()
+            hex!("9650bef0bff89132c91f2244d909e0d65acd13415a46efcb933e6c10b7af4c01"),
+            rec_one_time_sk.to_bytes()
         );
 
         assert_eq!(one_time_pk, PublicKey::from_private_key(&rec_one_time_sk));
@@ -337,15 +339,13 @@ mod tests {
 
     #[test]
     fn one_time_key_checker() {
-        let secret_view = PrivateKey::from_str(
-            "bcfdda53205318e1c14fa0ddca1a45df363bb427972981d0249d0f4652a7df07",
-        )
-        .unwrap();
+        let secret_view = PrivateKey::from_bits(hex!(
+            "bcfdda53205318e1c14fa0ddca1a45df363bb427972981d0249d0f4652a7df07"
+        ));
 
-        let secret_spend = PrivateKey::from_str(
-            "e5f4301d32f3bdaef814a835a18aaaa24b13cc76cf01a832a7852faf9322e907",
-        )
-        .unwrap();
+        let secret_spend = PrivateKey::from_bits(hex!(
+            "e5f4301d32f3bdaef814a835a18aaaa24b13cc76cf01a832a7852faf9322e907"
+        ));
 
         let public_spend = PublicKey::from_private_key(&secret_spend);
 
@@ -354,13 +354,15 @@ mod tests {
             spend: public_spend,
         };
 
-        let one_time_pk =
-            PublicKey::from_str("e3e77faca64b5997ac1f75763e87713d03d9e2896edec65843ffd2970ef1dde6")
-                .unwrap();
+        let one_time_pk = PublicKey::try_from(hex!(
+            "e3e77faca64b5997ac1f75763e87713d03d9e2896edec65843ffd2970ef1dde6"
+        ))
+        .unwrap();
 
-        let tx_pubkey =
-            PublicKey::from_str("5d1402db663eda8cef4f6782b66321e4a990f746aca249c973e098ba2c0837c1")
-                .unwrap();
+        let tx_pubkey = PublicKey::try_from(hex!(
+            "5d1402db663eda8cef4f6782b66321e4a990f746aca249c973e098ba2c0837c1"
+        ))
+        .unwrap();
 
         let checker = SubKeyChecker::new(&viewpair, 0..3, 0..3);
 
@@ -374,15 +376,13 @@ mod tests {
 
     #[test]
     fn one_time_subkey_checker() {
-        let secret_view = PrivateKey::from_str(
-            "bcfdda53205318e1c14fa0ddca1a45df363bb427972981d0249d0f4652a7df07",
-        )
-        .unwrap();
+        let secret_view = PrivateKey::from_bits(hex!(
+            "bcfdda53205318e1c14fa0ddca1a45df363bb427972981d0249d0f4652a7df07"
+        ));
 
-        let secret_spend = PrivateKey::from_str(
-            "e5f4301d32f3bdaef814a835a18aaaa24b13cc76cf01a832a7852faf9322e907",
-        )
-        .unwrap();
+        let secret_spend = PrivateKey::from_bits(hex!(
+            "e5f4301d32f3bdaef814a835a18aaaa24b13cc76cf01a832a7852faf9322e907"
+        ));
 
         let public_spend = PublicKey::from_private_key(&secret_spend);
 
@@ -391,13 +391,15 @@ mod tests {
             spend: public_spend,
         };
 
-        let one_time_pk =
-            PublicKey::from_str("b6a2e2f35a93d637ff7d25e20da326cee8e92005d3b18b3c425dabe833656899")
-                .unwrap();
+        let one_time_pk = PublicKey::try_from(hex!(
+            "b6a2e2f35a93d637ff7d25e20da326cee8e92005d3b18b3c425dabe833656899"
+        ))
+        .unwrap();
 
-        let tx_pubkey =
-            PublicKey::from_str("d6c75cf8c76ac458123f2a498512eb65bb3cecba346c8fcfc516dc0c88518bb9")
-                .unwrap();
+        let tx_pubkey = PublicKey::try_from(hex!(
+            "d6c75cf8c76ac458123f2a498512eb65bb3cecba346c8fcfc516dc0c88518bb9"
+        ))
+        .unwrap();
 
         let checker = SubKeyChecker::new(&viewpair, 0..3, 0..3);
 

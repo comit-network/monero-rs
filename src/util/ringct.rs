@@ -35,7 +35,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "serde_support")]
 use serde_big_array_unchecked_docs::*;
 
-use crate::util::key::H;
+use crate::util::key::{EdwardsPointExt, ScalarExt, H};
 use curve25519_dalek::constants::ED25519_BASEPOINT_POINT;
 use curve25519_dalek::edwards::EdwardsPoint;
 use thiserror::Error;
@@ -150,9 +150,9 @@ pub enum EcdhInfo {
     /// Standard format, before `Bulletproof2`.
     Standard {
         /// Mask value.
-        mask: Key,
+        mask: Scalar,
         /// Amount value.
-        amount: Key,
+        amount: Scalar,
     },
     /// Bulletproof format.
     Bulletproof {
@@ -190,11 +190,9 @@ impl EcdhInfo {
             EcdhInfo::Standard { mask, amount } => {
                 let shared_sec1 = hash::Hash::hash(shared_key.as_bytes()).to_bytes();
                 let shared_sec2 = hash::Hash::hash(&shared_sec1).to_bytes();
-                let mask_scalar = Scalar::from_bytes_mod_order(mask.key)
-                    - Scalar::from_bytes_mod_order(shared_sec1);
+                let mask_scalar = mask - Scalar::from_bytes_mod_order(shared_sec1);
 
-                let amount_scalar = Scalar::from_bytes_mod_order(amount.key)
-                    - Scalar::from_bytes_mod_order(shared_sec2);
+                let amount_scalar = amount - Scalar::from_bytes_mod_order(shared_sec2);
                 // get first 64 bits (d2b in rctTypes.cpp)
                 let amount_significant_bytes = amount_scalar.to_bytes()[0..8]
                     .try_into()
@@ -204,8 +202,8 @@ impl EcdhInfo {
             }
             // ecdhDecode in rctOps.cpp if (v2)
             EcdhInfo::Bulletproof { amount } => {
-                let amount = xor_amount(amount.0, shared_key.scalar);
-                let mask = mask(shared_key.scalar);
+                let amount = xor_amount(amount.0, shared_key);
+                let mask = mask(shared_key);
 
                 (u64::from_le_bytes(amount), mask)
             }
@@ -260,7 +258,7 @@ fn mask(scalar: Scalar) -> Scalar {
     commitment_key.extend(scalar.as_bytes());
 
     // yt in Z2M p 53
-    hash::Hash::hash_to_scalar(&commitment_key).scalar
+    hash::Hash::hash_to_scalar(&commitment_key)
 }
 
 impl fmt::Display for EcdhInfo {
@@ -268,8 +266,8 @@ impl fmt::Display for EcdhInfo {
         match self {
             EcdhInfo::Standard { mask, amount } => {
                 writeln!(fmt, "Standard")?;
-                writeln!(fmt, "Mask: {}", mask)?;
-                writeln!(fmt, "Amount: {}", amount)?;
+                writeln!(fmt, "Mask: {}", mask.display_hex())?;
+                writeln!(fmt, "Amount: {}", amount.display_hex())?;
             }
             EcdhInfo::Bulletproof { amount } => {
                 writeln!(fmt, "Bulletproof2")?;
@@ -438,7 +436,7 @@ pub struct RctSigBase {
     /// Ecdh info vector.
     pub ecdh_info: Vec<EcdhInfo>,
     /// Out pk vector.
-    pub out_pk: Vec<CtKey>,
+    pub out_pk: Vec<EdwardsPoint>,
 }
 
 impl fmt::Display for RctSigBase {
@@ -452,7 +450,7 @@ impl fmt::Display for RctSigBase {
             writeln!(fmt, "Ecdh info: {}", ecdh)?;
         }
         for out in &self.out_pk {
-            writeln!(fmt, "Out pk: {}", out)?;
+            writeln!(fmt, "Out pk: {}", out.display_hex())?;
         }
         Ok(())
     }
@@ -620,7 +618,7 @@ pub struct RctSigPrunable {
     /// CSLAG signatures.
     pub Clsags: Vec<Clsag>,
     /// Pseudo out vector.
-    pub pseudo_outs: Vec<Key>,
+    pub pseudo_outs: Vec<EdwardsPoint>,
 }
 
 impl RctSigPrunable {

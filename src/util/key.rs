@@ -21,12 +21,12 @@
 //!
 //! ```rust
 //! use std::str::FromStr;
-//! use monero::util::key::{Error, PrivateKey, PublicKey};
+//! use monero::util::key::{Error, PrivateKey, PublicKey, EdwardsPointExt, ScalarExt};
 //!
 //! // parse private key from hex
 //! let privkey = PrivateKey::from_str("77916d0cd56ed1920aef6ca56d8a41bac915b68e4c46a589e0956e27a7b77404")?;
 //! // parse public key from hex
-//! let pubkey_parsed = PublicKey::from_str("eac2cc96e0ae684388e3185d5277e51313bff98b9ad4a12dcd9205f20d37f1a3")?;
+//! let pubkey_parsed = PublicKey::from_hex("eac2cc96e0ae684388e3185d5277e51313bff98b9ad4a12dcd9205f20d37f1a3")?;
 //!
 //! // or get the public key from private key
 //! let pubkey = PublicKey::from_private_key(&privkey);
@@ -41,17 +41,19 @@
 //!
 //! ```rust
 //! use std::str::FromStr;
-//! use monero::util::key::{Error, PrivateKey, PublicKey};
+//! use monero::util::key::{Error, PrivateKey, PublicKey, EdwardsPointExt, ScalarExt};
+//! use std::convert::TryFrom;
+//! use hex_literal::hex;
 //!
 //! let priv1 = PrivateKey::from_str("77916d0cd56ed1920aef6ca56d8a41bac915b68e4c46a589e0956e27a7b77404")?;
 //! let priv2 = PrivateKey::from_str("8163466f1883598e6dd14027b8da727057165da91485834314f5500a65846f09")?;
 //! let priv_res = priv1 + priv2;
-//! assert_eq!("f8f4b37bedf12a2178c0adcc2565b42a212c133861cb28cdf48abf310c3ce40d", priv_res.to_string());
+//! assert_eq!(PrivateKey::from_bits(hex!("f8f4b37bedf12a2178c0adcc2565b42a212c133861cb28cdf48abf310c3ce40d")), priv_res);
 //!
 //! let pub1 = PublicKey::from_private_key(&priv1);
 //! let pub2 = PublicKey::from_private_key(&priv2);
 //! let pub_res = pub1 + pub2;
-//! assert_eq!("d35ad191b220a627977bb2912ea21fd59b24937f46c1d3814dbcb7943ff1f9f2", pub_res.to_string());
+//! assert_eq!(PublicKey::try_from(hex!("d35ad191b220a627977bb2912ea21fd59b24937f46c1d3814dbcb7943ff1f9f2")).unwrap(), pub_res);
 //!
 //! let pubkey = PublicKey::from_private_key(&priv_res);
 //! assert_eq!(pubkey, pub_res);
@@ -59,25 +61,18 @@
 //! ```
 //!
 
-use std::convert::TryFrom;
-use std::hash::{Hash, Hasher};
-use std::ops::{Add, Mul, Sub};
-use std::str::FromStr;
-use std::{fmt, io, ops};
+use std::{fmt, io};
 
-use curve25519_dalek::constants::ED25519_BASEPOINT_TABLE;
 use curve25519_dalek::edwards::{CompressedEdwardsY, EdwardsPoint};
 use curve25519_dalek::scalar::Scalar;
 use hex_literal::hex;
-use rand::{CryptoRng, RngCore};
 use thiserror::Error;
 
 use crate::consensus::encode::{self, Decodable, Encodable};
 use crate::cryptonote::hash;
 
 use conquer_once::Lazy;
-#[cfg(feature = "serde_support")]
-use serde::{Deserialize, Serialize};
+use curve25519_dalek::constants::ED25519_BASEPOINT_POINT;
 
 /// Potential errors encountered during key decoding.
 #[derive(Error, Debug, PartialEq)]
@@ -96,183 +91,50 @@ pub enum Error {
     Hex(#[from] hex::FromHexError),
 }
 
-/// A private key, a valid curve25519 scalar.
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
-pub struct PrivateKey {
-    /// The actual curve25519 scalar.
-    pub scalar: Scalar,
+/// A private key in Monero is simply a Scalar.
+pub type PrivateKey = Scalar;
+
+/// Extension trait for things we want to do with scalars that are not (yet) present on [`Scalar`].
+pub trait ScalarExt: Sized {
+    /// Construct a [`Scalar`] from a slice of bytes.
+    fn from_slice(bytes: &[u8]) -> Result<Self, Error>;
+    /// Construct a [`Scalar`] from a hex-encoded string.
+    fn from_str(string: &str) -> Result<Self, Error>;
+    /// Returns an adaptor that implements [`fmt::Display`].
+    fn display_hex(&self) -> DisplayHexAdaptor<'_, Self>;
 }
 
-impl PrivateKey {
-    /// Generate random private key.
-    pub fn random<R: RngCore + CryptoRng>(rng: &mut R) -> Self {
-        Self {
-            scalar: Scalar::random(rng),
-        }
-    }
-
-    /// Serialize the private key as bytes.
-    pub fn as_bytes(&self) -> &[u8] {
-        self.scalar.as_bytes()
-    }
-
-    /// Serialize the private key to bytes.
-    pub fn to_bytes(&self) -> [u8; 32] {
-        self.scalar.to_bytes()
-    }
-
-    /// Deserialize a private key from a slice.
-    pub fn from_slice(data: &[u8]) -> Result<PrivateKey, Error> {
-        if data.len() != 32 {
+impl ScalarExt for Scalar {
+    fn from_slice(bytes: &[u8]) -> Result<Self, Error> {
+        if bytes.len() != 32 {
             return Err(Error::InvalidLength);
         }
-        let mut bytes = [0u8; 32];
-        bytes.copy_from_slice(data);
-        let scalar = match Scalar::from_canonical_bytes(bytes) {
-            Some(scalar) => scalar,
-            None => {
-                return Err(Error::NotCanonicalScalar);
-            }
-        };
-        Ok(PrivateKey { scalar })
+
+        let mut buffer = [0u8; 32];
+        buffer.copy_from_slice(bytes);
+
+        Self::from_canonical_bytes(buffer).ok_or(Error::NotCanonicalScalar)
     }
 
-    /// Create a secret key from a raw curve25519 scalar.
-    pub fn from_scalar(scalar: Scalar) -> PrivateKey {
-        PrivateKey { scalar }
+    fn from_str(string: &str) -> Result<Self, Error> {
+        let mut buffer = [0u8; 32];
+        hex::decode_to_slice(string, &mut buffer)?;
+
+        Self::from_canonical_bytes(buffer).ok_or(Error::NotCanonicalScalar)
     }
-}
 
-impl TryFrom<[u8; 32]> for PrivateKey {
-    type Error = Error;
-
-    fn try_from(value: [u8; 32]) -> Result<Self, Self::Error> {
-        Self::from_slice(&value)
-    }
-}
-
-impl TryFrom<&[u8]> for PrivateKey {
-    type Error = Error;
-
-    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        Self::from_slice(value)
-    }
-}
-
-impl<'a, 'b> Add<&'b PrivateKey> for &'a PrivateKey {
-    type Output = PrivateKey;
-
-    fn add(self, other: &'b PrivateKey) -> Self::Output {
-        let scalar = self.scalar + other.scalar;
-        PrivateKey { scalar }
-    }
-}
-
-impl<'a> Add<PrivateKey> for &'a PrivateKey {
-    type Output = PrivateKey;
-
-    fn add(self, other: PrivateKey) -> Self::Output {
-        let scalar = self.scalar + other.scalar;
-        PrivateKey { scalar }
-    }
-}
-
-impl<'b> Add<&'b PrivateKey> for PrivateKey {
-    type Output = PrivateKey;
-
-    fn add(self, other: &'b PrivateKey) -> Self::Output {
-        let scalar = self.scalar + other.scalar;
-        PrivateKey { scalar }
-    }
-}
-
-impl Add<PrivateKey> for PrivateKey {
-    type Output = PrivateKey;
-
-    fn add(self, other: PrivateKey) -> Self::Output {
-        let scalar = self.scalar + other.scalar;
-        PrivateKey { scalar }
-    }
-}
-
-impl Mul<u8> for PrivateKey {
-    type Output = PrivateKey;
-
-    fn mul(self, other: u8) -> Self::Output {
-        let other: Scalar = other.into();
-        PrivateKey {
-            scalar: self.scalar * other,
-        }
-    }
-}
-
-impl Mul<Scalar> for PrivateKey {
-    type Output = PrivateKey;
-
-    fn mul(self, other: Scalar) -> Self::Output {
-        PrivateKey {
-            scalar: self.scalar * other,
-        }
-    }
-}
-
-impl Mul<PrivateKey> for PrivateKey {
-    type Output = PrivateKey;
-
-    fn mul(self, other: PrivateKey) -> Self::Output {
-        PrivateKey {
-            scalar: self.scalar * other.scalar,
-        }
-    }
-}
-
-impl<'b> Mul<&'b PublicKey> for PrivateKey {
-    type Output = PublicKey;
-
-    fn mul(self, other: &'b PublicKey) -> Self::Output {
-        let point = self.scalar * other.point();
-        PublicKey {
-            point: point.compress(),
-        }
-    }
-}
-
-impl<'a, 'b> Mul<&'b PublicKey> for &'a PrivateKey {
-    type Output = PublicKey;
-
-    fn mul(self, other: &'b PublicKey) -> Self::Output {
-        let point = self.scalar * other.point();
-        PublicKey {
-            point: point.compress(),
-        }
-    }
-}
-
-impl fmt::Display for PrivateKey {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", hex::encode(&self[..]))
-    }
-}
-
-impl FromStr for PrivateKey {
-    type Err = Error;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let bytes = hex::decode(s)?;
-        Self::from_slice(&bytes[..])
-    }
-}
-
-impl ops::Index<ops::RangeFull> for PrivateKey {
-    type Output = [u8];
-    fn index(&self, _: ops::RangeFull) -> &[u8] {
-        self.as_bytes()
+    fn display_hex(&self) -> DisplayHexAdaptor<'_, Self> {
+        DisplayHexAdaptor { inner: self }
     }
 }
 
 impl Decodable for PrivateKey {
     fn consensus_decode<D: io::Read>(d: &mut D) -> Result<PrivateKey, encode::Error> {
         let bytes: [u8; 32] = Decodable::consensus_decode(d)?;
-        Ok(PrivateKey::from_slice(&bytes)?)
+        let scalar = PrivateKey::from_canonical_bytes(bytes)
+            .ok_or(encode::Error::Key(Error::NotCanonicalScalar))?;
+
+        Ok(scalar)
     }
 }
 
@@ -283,220 +145,75 @@ impl Encodable for PrivateKey {
 }
 
 /// A public key, a valid edward point on the curve.
-#[derive(PartialEq, Eq, Copy, Clone)]
-#[cfg_attr(feature = "serde_support", derive(Serialize, Deserialize))]
-pub struct PublicKey {
-    /// The actual Ed25519 point.
-    pub point: CompressedEdwardsY,
+pub type PublicKey = EdwardsPoint;
+
+/// Extension trait for things we want to do with edwards points that are not (yet) present on [`EdwardsPoint`].
+pub trait EdwardsPointExt: Sized {
+    /// Construct an [`EdwardsPoint`] from a [`Scalar`].
+    ///
+    /// Essentially, this computes the "public key" of a "private key".
+    fn from_private_key(key: &PrivateKey) -> Self;
+    /// Returns an adaptor that implements [`fmt::Display`].
+    fn display_hex(&self) -> DisplayHexAdaptor<'_, Self>;
+    /// Construct an [`EdwardsPoint`] from a hex-encoded string.
+    fn from_hex(string: &str) -> Result<Self, Error>;
 }
 
-impl PublicKey {
-    /// Serialize a public key as bytes.
-    pub fn as_bytes(&self) -> &[u8] {
-        self.point.as_bytes()
+impl EdwardsPointExt for EdwardsPoint {
+    fn from_private_key(key: &PrivateKey) -> Self {
+        key * ED25519_BASEPOINT_POINT
     }
 
-    /// Serialize a public key to bytes.
-    pub fn to_bytes(&self) -> [u8; 32] {
-        self.point.to_bytes()
+    fn display_hex(&self) -> DisplayHexAdaptor<'_, Self> {
+        DisplayHexAdaptor { inner: self }
     }
 
-    /// Deserialize a public key from a slice.
-    pub fn from_slice(data: &[u8]) -> Result<PublicKey, Error> {
-        if data.len() != 32 {
-            return Err(Error::InvalidLength);
-        }
-        let point = CompressedEdwardsY::from_slice(data);
-        match point.decompress() {
-            Some(_) => (),
-            None => {
-                return Err(Error::InvalidPoint);
-            }
-        };
-        Ok(PublicKey { point })
-    }
+    fn from_hex(string: &str) -> Result<Self, Error> {
+        let mut buffer = [0u8; 32];
+        hex::decode_to_slice(string, &mut buffer)?;
 
-    /// Generate a public key from the private key.
-    pub fn from_private_key(privkey: &PrivateKey) -> PublicKey {
-        let point = &privkey.scalar * &ED25519_BASEPOINT_TABLE;
-        PublicKey {
-            point: point.compress(),
-        }
-    }
-
-    /// Get the decompressed edward point of the public key.
-    fn point(&self) -> EdwardsPoint {
-        self.point
+        CompressedEdwardsY(buffer)
             .decompress()
-            .expect("PublicKey Can only be created if a valid point is found. QED")
+            .ok_or(Error::InvalidPoint)
     }
 }
 
-impl TryFrom<[u8; 32]> for PublicKey {
-    type Error = Error;
+/// Adaptor struct for printing type `T` as hex.
+pub struct DisplayHexAdaptor<'a, T> {
+    inner: &'a T,
+}
 
-    fn try_from(value: [u8; 32]) -> Result<Self, Self::Error> {
-        Self::from_slice(&value)
+impl<'a> fmt::Display for DisplayHexAdaptor<'a, EdwardsPoint> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", hex::encode(self.inner.compress().as_bytes()))
     }
 }
 
-impl TryFrom<&[u8]> for PublicKey {
-    type Error = Error;
-
-    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        Self::from_slice(value)
-    }
-}
-
-impl<'a, 'b> Add<&'b PublicKey> for &'a PublicKey {
-    type Output = PublicKey;
-
-    fn add(self, other: &'b PublicKey) -> Self::Output {
-        let point = self.point() + other.point();
-        PublicKey {
-            point: point.compress(),
-        }
-    }
-}
-
-impl<'a> Add<PublicKey> for &'a PublicKey {
-    type Output = PublicKey;
-
-    fn add(self, other: PublicKey) -> Self::Output {
-        let point = self.point() + other.point();
-        PublicKey {
-            point: point.compress(),
-        }
-    }
-}
-
-impl<'b> Add<&'b PublicKey> for PublicKey {
-    type Output = PublicKey;
-
-    fn add(self, other: &'b PublicKey) -> Self::Output {
-        let point = self.point() + other.point();
-        PublicKey {
-            point: point.compress(),
-        }
-    }
-}
-
-impl Add<PublicKey> for PublicKey {
-    type Output = PublicKey;
-
-    fn add(self, other: PublicKey) -> Self::Output {
-        let point = self.point() + other.point();
-        PublicKey {
-            point: point.compress(),
-        }
-    }
-}
-
-impl<'a, 'b> Sub<&'b PublicKey> for &'a PublicKey {
-    type Output = PublicKey;
-
-    fn sub(self, other: &'b PublicKey) -> Self::Output {
-        let point = self.point() - other.point();
-        PublicKey {
-            point: point.compress(),
-        }
-    }
-}
-
-impl<'a> Sub<PublicKey> for &'a PublicKey {
-    type Output = PublicKey;
-
-    fn sub(self, other: PublicKey) -> Self::Output {
-        let point = self.point() - other.point();
-        PublicKey {
-            point: point.compress(),
-        }
-    }
-}
-
-impl<'b> Sub<&'b PublicKey> for PublicKey {
-    type Output = PublicKey;
-
-    fn sub(self, other: &'b PublicKey) -> Self::Output {
-        let point = self.point() - other.point();
-        PublicKey {
-            point: point.compress(),
-        }
-    }
-}
-
-impl Sub<PublicKey> for PublicKey {
-    type Output = PublicKey;
-
-    fn sub(self, other: PublicKey) -> Self::Output {
-        let point = self.point() - other.point();
-        PublicKey {
-            point: point.compress(),
-        }
-    }
-}
-
-impl<'b> Mul<&'b PrivateKey> for PublicKey {
-    type Output = PublicKey;
-
-    fn mul(self, other: &'b PrivateKey) -> Self::Output {
-        let point = self.point() * other.scalar;
-        PublicKey {
-            point: point.compress(),
-        }
-    }
-}
-
-impl fmt::Display for PublicKey {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", hex::encode(&self[..]))
-    }
-}
-
-impl fmt::Debug for PublicKey {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", hex::encode(&self[..]))
-    }
-}
-
-#[allow(clippy::derive_hash_xor_eq)]
-impl Hash for PublicKey {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.as_bytes().hash(state);
-    }
-}
-
-impl FromStr for PublicKey {
-    type Err = Error;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let bytes = hex::decode(s)?;
-        Self::from_slice(&bytes[..])
-    }
-}
-
-impl ops::Index<ops::RangeFull> for PublicKey {
-    type Output = [u8];
-    fn index(&self, _: ops::RangeFull) -> &[u8] {
-        self.as_bytes()
+impl<'a> fmt::Display for DisplayHexAdaptor<'a, Scalar> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", hex::encode(self.inner.as_bytes()))
     }
 }
 
 impl Decodable for PublicKey {
     fn consensus_decode<D: io::Read>(d: &mut D) -> Result<PublicKey, encode::Error> {
         let bytes: [u8; 32] = Decodable::consensus_decode(d)?;
-        Ok(PublicKey::from_slice(&bytes)?)
+        let compressed_edwards = CompressedEdwardsY(bytes).decompress();
+        let point = compressed_edwards.ok_or(encode::Error::Key(Error::InvalidPoint))?;
+
+        Ok(point)
     }
 }
 
 impl Encodable for PublicKey {
     fn consensus_encode<S: io::Write>(&self, s: &mut S) -> Result<usize, io::Error> {
-        self.to_bytes().consensus_encode(s)
+        self.compress().to_bytes().consensus_encode(s)
     }
 }
 
 impl hash::Hashable for PublicKey {
     fn hash(&self) -> hash::Hash {
-        hash::Hash::hash(self.as_bytes())
+        hash::Hash::hash(&self.compress().to_bytes())
     }
 }
 
@@ -551,52 +268,58 @@ impl From<&KeyPair> for ViewPair {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
-    use super::{PrivateKey, PublicKey};
+    use super::*;
+    use hex_literal::hex;
+    use std::convert::TryFrom;
 
     #[test]
     fn public_key_from_secret() {
-        let privkey = PrivateKey::from_str(
-            "77916d0cd56ed1920aef6ca56d8a41bac915b68e4c46a589e0956e27a7b77404",
-        )
-        .unwrap();
+        let privkey = PrivateKey::from_bits(hex!(
+            "77916d0cd56ed1920aef6ca56d8a41bac915b68e4c46a589e0956e27a7b77404"
+        ));
+
+        let public_key = PublicKey::from_private_key(&privkey);
+
         assert_eq!(
-            "eac2cc96e0ae684388e3185d5277e51313bff98b9ad4a12dcd9205f20d37f1a3",
-            PublicKey::from_private_key(&privkey).to_string()
+            PublicKey::try_from(hex!(
+                "eac2cc96e0ae684388e3185d5277e51313bff98b9ad4a12dcd9205f20d37f1a3"
+            ))
+            .unwrap(),
+            public_key
         );
     }
 
     #[test]
     fn parse_public_key() {
-        assert!(PublicKey::from_str(
+        assert!(PublicKey::try_from(hex!(
             "eac2cc96e0ae684388e3185d5277e51313bff98b9ad4a12dcd9205f20d37f1a3"
-        )
+        ))
         .is_ok());
     }
 
     #[test]
     fn add_privkey_and_pubkey() {
-        let priv1 = PrivateKey::from_str(
-            "77916d0cd56ed1920aef6ca56d8a41bac915b68e4c46a589e0956e27a7b77404",
-        )
-        .unwrap();
-        let priv2 = PrivateKey::from_str(
-            "8163466f1883598e6dd14027b8da727057165da91485834314f5500a65846f09",
-        )
-        .unwrap();
+        let priv1 = PrivateKey::from_bits(hex!(
+            "77916d0cd56ed1920aef6ca56d8a41bac915b68e4c46a589e0956e27a7b77404"
+        ));
+        let priv2 = PrivateKey::from_bits(hex!(
+            "8163466f1883598e6dd14027b8da727057165da91485834314f5500a65846f09"
+        ));
         let priv_res = priv1 + priv2;
         assert_eq!(
-            "f8f4b37bedf12a2178c0adcc2565b42a212c133861cb28cdf48abf310c3ce40d",
-            priv_res.to_string()
+            hex!("f8f4b37bedf12a2178c0adcc2565b42a212c133861cb28cdf48abf310c3ce40d"),
+            priv_res.to_bytes()
         );
 
         let pub1 = PublicKey::from_private_key(&priv1);
         let pub2 = PublicKey::from_private_key(&priv2);
         let pub_res = pub1 + pub2;
         assert_eq!(
-            "d35ad191b220a627977bb2912ea21fd59b24937f46c1d3814dbcb7943ff1f9f2",
-            pub_res.to_string()
+            PublicKey::try_from(hex!(
+                "d35ad191b220a627977bb2912ea21fd59b24937f46c1d3814dbcb7943ff1f9f2"
+            ))
+            .unwrap(),
+            pub_res
         );
 
         let pubkey = PublicKey::from_private_key(&priv_res);
