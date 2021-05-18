@@ -248,7 +248,7 @@ impl Address {
     }
 
     /// Serialize the address as a vector of bytes.
-    pub fn as_bytes(&self) -> Vec<u8> {
+    pub fn to_bytes(&self) -> Vec<u8> {
         let mut bytes = vec![self.network.as_u8(&self.addr_type)];
         bytes.extend_from_slice(self.public_spend.as_bytes());
         bytes.extend_from_slice(self.public_view.as_bytes());
@@ -264,13 +264,13 @@ impl Address {
 
     /// Serialize the address as an hexadecimal string.
     pub fn as_hex(&self) -> String {
-        hex::encode(self.as_bytes())
+        hex::encode(self.to_bytes())
     }
 }
 
 impl fmt::Display for Address {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", base58::encode(self.as_bytes().as_slice()).unwrap())
+        write!(f, "{}", base58::encode(self.to_bytes().as_slice()).unwrap())
     }
 }
 
@@ -402,7 +402,7 @@ mod tests {
         let address = "4ADT1BtbxqEWeMKp9GgPr2NeyJXXtNxvoDawpyA4WpzFcGcoHUvXeijE66DNfohE9r1bQYaBiQjEtKE7CtkTdLwiDznFzra";
         let add = Address::from_str(address).unwrap();
         let bytes = base58::decode(address).unwrap();
-        assert_eq!(bytes, add.as_bytes());
+        assert_eq!(bytes, add.to_bytes());
     }
 
     #[test]
@@ -410,7 +410,7 @@ mod tests {
         let address = "4Byr22j9M2878Mtyb3fEPcBNwBZf5EXqn1Yi6VzR46618SFBrYysab2Cs1474CVDbsh94AJq7vuV3Z2DRq4zLcY3LHzo1Nbv3d8J6VhvCV";
         let add = Address::from_str(address).unwrap();
         let bytes = base58::decode(address).unwrap();
-        assert_eq!(bytes, add.as_bytes());
+        assert_eq!(bytes, add.to_bytes());
     }
 
     #[test]
