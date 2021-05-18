@@ -1,8 +1,7 @@
 use crate::clsag::{array_map, compute_L, compute_R, RING_SIZE};
 use crate::util::ringct::Clsag;
 use crate::util::EIGHT;
-use curve25519_dalek::edwards::{CompressedEdwardsY, EdwardsPoint};
-use curve25519_dalek::scalar::Scalar;
+use curve25519_dalek::edwards::EdwardsPoint;
 
 /// Verifies a CLSAG signature in accordance with Monero's implementation.
 #[allow(non_snake_case)]
@@ -15,16 +14,10 @@ pub fn verify(
     I: EdwardsPoint,
     pseudo_output_commitment: EdwardsPoint,
 ) -> bool {
-    let D_inv_8 = match CompressedEdwardsY(signature.D.key).decompress() {
-        Some(D_inv_8) => D_inv_8,
-        None => return false,
-    };
-    let h_0 = Scalar::from_bytes_mod_order(signature.c1.key);
-    let responses = signature
-        .s
-        .iter()
-        .copied()
-        .map(|s| Scalar::from_bytes_mod_order(s.key));
+    let D_inv_8 = signature.D;
+    let h_0 = signature.c1;
+    let responses = signature.s.as_slice();
+
     let D = D_inv_8 * EIGHT;
 
     let mu_P = hash_to_scalar!(
@@ -39,8 +32,8 @@ pub fn verify(
 
     let h_0_computed = itertools::izip!(responses, ring.iter(), adjusted_commitment_ring.iter())
         .fold(h_0, |h, (s_i, pk_i, adjusted_commitment_i)| {
-            let L_i = compute_L(h, mu_P, mu_C, s_i, *pk_i, *adjusted_commitment_i);
-            let R_i = compute_R(h, mu_P, mu_C, s_i, *pk_i, I, D);
+            let L_i = compute_L(h, mu_P, mu_C, *s_i, *pk_i, *adjusted_commitment_i);
+            let R_i = compute_R(h, mu_P, mu_C, *s_i, *pk_i, I, D);
 
             hash_to_scalar!(
                 b"CLSAG_round"

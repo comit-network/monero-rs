@@ -100,8 +100,8 @@ pub fn sign(
     responses[signing_key_index] = alpha - h_prev * ((mu_P * signing_key) + (mu_C * z));
 
     Clsag {
-        s: responses.iter().map(|s| s.to_bytes().into()).collect(),
-        c1: h_0.to_bytes().into(),
-        D: D_inv_8.compress().to_bytes().into(),
+        s: responses.to_vec(),
+        c1: h_0,
+        D: D_inv_8,
     }
 }

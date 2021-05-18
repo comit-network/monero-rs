@@ -601,24 +601,24 @@ impl Transaction {
         let mut keccak = tiny_keccak::Keccak::v256();
 
         for bp in bulletproofs {
-            keccak.update(&bp.A.key);
-            keccak.update(&bp.S.key);
-            keccak.update(&bp.T1.key);
-            keccak.update(&bp.T2.key);
-            keccak.update(&bp.taux.key);
-            keccak.update(&bp.mu.key);
+            keccak.update(bp.A.compress().as_bytes());
+            keccak.update(bp.S.compress().as_bytes());
+            keccak.update(bp.T1.compress().as_bytes());
+            keccak.update(bp.T2.compress().as_bytes());
+            keccak.update(bp.taux.as_bytes());
+            keccak.update(bp.mu.as_bytes());
 
             for i in &bp.L {
-                keccak.update(&i.key);
+                keccak.update(i.compress().as_bytes());
             }
 
             for i in &bp.R {
-                keccak.update(&i.key);
+                keccak.update(i.compress().as_bytes());
             }
 
-            keccak.update(&bp.a.key);
-            keccak.update(&bp.b.key);
-            keccak.update(&bp.t.key);
+            keccak.update(bp.a.as_bytes());
+            keccak.update(bp.b.as_bytes());
+            keccak.update(bp.t.as_bytes());
         }
 
         let mut hash = [0u8; 32];
@@ -659,7 +659,7 @@ impl hash::Hashable for Transaction {
         match *self.prefix.version {
             1 => hash::Hash::hash(&serialize(self)),
             _ => {
-                let mut hashes: Vec<hash::Hash> = vec![self.prefix.hash()];
+                let mut hashes = vec![self.prefix.hash()];
                 if let Some(sig_base) = &self.rct_signatures.sig {
                     hashes.push(sig_base.hash());
                     if sig_base.rct_type == RctType::Null {
@@ -697,7 +697,7 @@ impl hash::Hashable for Transaction {
 
 impl Decodable for ExtraField {
     fn consensus_decode<D: io::Read>(d: &mut D) -> Result<ExtraField, encode::Error> {
-        let mut fields: Vec<SubField> = vec![];
+        let mut fields = vec![];
         let bytes: Vec<u8> = Decodable::consensus_decode(d)?;
         let mut decoder = io::Cursor::new(&bytes[..]);
         // Decode each extra field

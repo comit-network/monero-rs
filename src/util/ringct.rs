@@ -97,24 +97,6 @@ impl From<[u8; 64]> for Key64 {
 }
 
 // ====================================================================
-/// Confidential transaction key.
-#[derive(Debug, Clone, Copy, PartialEq, Hash)]
-#[cfg_attr(feature = "serde_support", derive(Serialize, Deserialize))]
-pub struct CtKey {
-    //pub dest: Key,
-    /// Mask.
-    pub mask: Key,
-}
-
-impl fmt::Display for CtKey {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        writeln!(fmt, "Mask: {}", self.mask)
-    }
-}
-
-impl_consensus_encoding!(CtKey, mask);
-
-// ====================================================================
 /// Multisig.
 #[derive(Debug)]
 #[allow(non_snake_case)]
@@ -358,11 +340,11 @@ impl Encodable for MgSig {
 #[cfg_attr(feature = "serde_support", derive(Serialize, Deserialize))]
 pub struct Clsag {
     /// scalars.
-    pub s: Vec<Key>,
+    pub s: Vec<Scalar>,
     /// c1 value.
-    pub c1: Key,
+    pub c1: Scalar,
     /// commitment key image.
-    pub D: Key,
+    pub D: EdwardsPoint,
 }
 
 impl Encodable for Clsag {
@@ -397,27 +379,27 @@ impl_consensus_encoding!(RangeSig, asig, Ci);
 #[cfg_attr(feature = "serde_support", derive(Serialize, Deserialize))]
 pub struct Bulletproof {
     /// A value.
-    pub A: Key,
+    pub A: EdwardsPoint,
     /// S value.
-    pub S: Key,
+    pub S: EdwardsPoint,
     /// T1 value.
-    pub T1: Key,
+    pub T1: EdwardsPoint,
     /// T2 value.
-    pub T2: Key,
+    pub T2: EdwardsPoint,
     /// taux value.
-    pub taux: Key,
+    pub taux: Scalar,
     /// mu value.
-    pub mu: Key,
+    pub mu: Scalar,
     /// L value.
-    pub L: Vec<Key>,
+    pub L: Vec<EdwardsPoint>,
     /// R value.
-    pub R: Vec<Key>,
+    pub R: Vec<EdwardsPoint>,
     /// a value.
-    pub a: Key,
+    pub a: Scalar,
     /// b value.
-    pub b: Key,
+    pub b: Scalar,
     /// t value.
-    pub t: Key,
+    pub t: Scalar,
 }
 
 impl_consensus_encoding!(Bulletproof, A, S, T1, T2, taux, mu, L, R, a, b, t);
@@ -477,7 +459,7 @@ impl RctSigBase {
             | RctType::Bulletproof
             | RctType::Bulletproof2
             | RctType::Clsag => {
-                let mut pseudo_outs: Vec<Key> = vec![];
+                let mut pseudo_outs = vec![];
                 // TxnFee
                 let txn_fee: VarInt = Decodable::consensus_decode(d)?;
                 // RctType
@@ -485,12 +467,12 @@ impl RctSigBase {
                     pseudo_outs = decode_sized_vec!(inputs, d);
                 }
                 // EcdhInfo
-                let mut ecdh_info: Vec<EcdhInfo> = vec![];
+                let mut ecdh_info = vec![];
                 for _ in 0..outputs {
                     ecdh_info.push(EcdhInfo::consensus_decode(d, rct_type)?);
                 }
                 // OutPk
-                let out_pk: Vec<CtKey> = decode_sized_vec!(outputs, d);
+                let out_pk = decode_sized_vec!(outputs, d);
                 Ok(Some(RctSigBase {
                     rct_type,
                     txn_fee,
@@ -639,8 +621,8 @@ impl RctSigPrunable {
             | RctType::Bulletproof
             | RctType::Bulletproof2
             | RctType::Clsag => {
-                let mut bulletproofs: Vec<Bulletproof> = vec![];
-                let mut range_sigs: Vec<RangeSig> = vec![];
+                let mut bulletproofs = vec![];
+                let mut range_sigs = vec![];
                 if rct_type.is_rct_bp() {
                     match rct_type {
                         RctType::Bulletproof2 | RctType::Clsag => {
@@ -655,15 +637,15 @@ impl RctSigPrunable {
                     range_sigs = decode_sized_vec!(outputs, d);
                 }
 
-                let mut Clsags: Vec<Clsag> = vec![];
-                let mut MGs: Vec<MgSig> = vec![];
+                let mut Clsags = vec![];
+                let mut MGs = vec![];
 
                 match rct_type {
                     RctType::Clsag => {
                         for _ in 0..inputs {
-                            let mut s: Vec<Key> = vec![];
+                            let mut s = vec![];
                             for _ in 0..=mixin {
-                                let s_elems: Key = Decodable::consensus_decode(d)?;
+                                let s_elems = Decodable::consensus_decode(d)?;
                                 s.push(s_elems);
                             }
                             let c1 = Decodable::consensus_decode(d)?;
@@ -677,10 +659,10 @@ impl RctSigPrunable {
                             || rct_type == RctType::Bulletproof2;
                         let mg_elements = if is_simple_or_bp { inputs } else { 1 };
                         for _ in 0..mg_elements {
-                            let mut ss: Vec<Vec<Key>> = vec![];
+                            let mut ss = vec![];
                             for _ in 0..=mixin {
                                 let mg_ss2_elements = if is_simple_or_bp { 2 } else { 1 + inputs };
-                                let ss_elems: Vec<Key> = decode_sized_vec!(mg_ss2_elements, d);
+                                let ss_elems = decode_sized_vec!(mg_ss2_elements, d);
                                 ss.push(ss_elems);
                             }
                             let cc = Decodable::consensus_decode(d)?;
@@ -689,7 +671,7 @@ impl RctSigPrunable {
                     }
                 }
 
-                let mut pseudo_outs: Vec<Key> = vec![];
+                let mut pseudo_outs = vec![];
                 match rct_type {
                     RctType::Bulletproof | RctType::Bulletproof2 | RctType::Clsag => {
                         pseudo_outs = decode_sized_vec!(inputs, d);

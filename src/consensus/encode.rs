@@ -304,7 +304,7 @@ impl_int_encodable!(i64, read_i64, emit_i64);
 impl Encodable for VarInt {
     #[inline]
     fn consensus_encode<S: io::Write>(&self, s: &mut S) -> Result<usize, io::Error> {
-        let mut res: Vec<u8> = vec![];
+        let mut res = vec![];
         let mut n = self.0;
         loop {
             let bits = (n & 0b0111_1111) as u8;
@@ -335,7 +335,7 @@ impl Encodable for VarInt {
 impl Decodable for VarInt {
     #[inline]
     fn consensus_decode<D: io::Read>(d: &mut D) -> Result<Self, Error> {
-        let mut res: Vec<u8> = vec![];
+        let mut res = vec![];
         loop {
             let n = d.read_u8()?;
             res.push(n & 0b0111_1111);
