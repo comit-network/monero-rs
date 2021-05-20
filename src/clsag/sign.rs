@@ -29,7 +29,7 @@ pub fn sign(
     L: EdwardsPoint,
     R: EdwardsPoint,
     I: EdwardsPoint,
-) -> Clsag {
+) -> (Clsag, Scalar) {
     let D = z * H_p_pk;
     let D_inv_8 = D * INV_EIGHT;
     let adjusted_commitment_ring =
@@ -97,11 +97,16 @@ pub fn sign(
         h_prev = h
     }
 
-    responses[signing_key_index] = alpha - h_prev * ((mu_P * signing_key) + (mu_C * z));
+    let stupid_constant = h_prev * mu_C * z;
 
-    Clsag {
-        s: responses.to_vec(),
-        c1: h_0,
-        D: D_inv_8,
-    }
+    responses[signing_key_index] = alpha - h_prev * mu_P * signing_key - stupid_constant;
+
+    (
+        Clsag {
+            s: responses.to_vec(),
+            c1: h_0,
+            D: D_inv_8,
+        },
+        stupid_constant,
+    )
 }
