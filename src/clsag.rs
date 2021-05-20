@@ -106,7 +106,7 @@ mod tests {
             #[allow(non_snake_case)]
             let I = signing_key * H_p_pk;
 
-            let signature = sign(
+            let (signature, _) = sign(
                 msg_to_sign,
                 signing_key,
                 signing_key_index,
