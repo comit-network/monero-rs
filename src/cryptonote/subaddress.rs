@@ -29,7 +29,7 @@ use crate::consensus::encode::Encodable;
 use crate::cryptonote::hash;
 use crate::network::Network;
 use crate::util::address::Address;
-use crate::util::key::{KeyPair, PrivateKey, PublicKey, ViewPair};
+use crate::util::key::{EdwardsPointExt, KeyPair, PrivateKey, PublicKey, ViewPair};
 
 /// A sub-address index with `major` and `minor` indexes, primary address is `0/0`.
 ///
@@ -138,7 +138,7 @@ pub fn get_public_keys(keys: &ViewPair, index: Index) -> (PublicKey, PublicKey) 
     // Get S' from (v, S)
     let spend = get_spend_public_key(keys, index);
     // V' = v*S'
-    let view = keys.view * &spend;
+    let view = keys.view * spend;
     (view, spend)
 }
 
@@ -155,23 +155,21 @@ pub fn get_subaddress(keys: &ViewPair, index: Index, network: Option<Network>) -
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
-    use super::{get_public_keys, get_subaddress, Index};
+    use super::*;
     use crate::network::Network;
     use crate::util::key::{PrivateKey, PublicKey, ViewPair};
+    use hex_literal::hex;
+    use std::convert::TryFrom;
 
     #[test]
     #[allow(non_snake_case)]
     fn get_subkeys_test() {
-        let a = PrivateKey::from_str(
-            "77916d0cd56ed1920aef6ca56d8a41bac915b68e4c46a589e0956e27a7b77404",
-        )
-        .unwrap();
-        let b = PrivateKey::from_str(
-            "8163466f1883598e6dd14027b8da727057165da91485834314f5500a65846f09",
-        )
-        .unwrap();
+        let a = PrivateKey::from_bits(hex!(
+            "77916d0cd56ed1920aef6ca56d8a41bac915b68e4c46a589e0956e27a7b77404"
+        ));
+        let b = PrivateKey::from_bits(hex!(
+            "8163466f1883598e6dd14027b8da727057165da91485834314f5500a65846f09"
+        ));
         let B = PublicKey::from_private_key(&b);
         //let keypair = KeyPair { view: a, spend: b };
         let viewpair = ViewPair { view: a, spend: B };
@@ -183,26 +181,30 @@ mod tests {
         let (sub_view_pub, sub_spend_pub) = get_public_keys(&viewpair, index);
 
         assert_eq!(
-            "601782bdde614e9ba664048a27b7407df4b76ae2e50a85fcc168a4c1766b3edf",
-            sub_view_pub.to_string()
+            PublicKey::try_from(hex!(
+                "601782bdde614e9ba664048a27b7407df4b76ae2e50a85fcc168a4c1766b3edf"
+            ))
+            .unwrap(),
+            sub_view_pub
         );
         assert_eq!(
-            "c25179ddef2ca4728fb691dd71561dc9f2e7e6b2a14284a4fe5441d7757aea02",
-            sub_spend_pub.to_string()
+            PublicKey::try_from(hex!(
+                "c25179ddef2ca4728fb691dd71561dc9f2e7e6b2a14284a4fe5441d7757aea02"
+            ))
+            .unwrap(),
+            sub_spend_pub
         );
     }
 
     #[test]
     #[allow(non_snake_case)]
     fn get_subaddress_test() {
-        let a = PrivateKey::from_str(
-            "77916d0cd56ed1920aef6ca56d8a41bac915b68e4c46a589e0956e27a7b77404",
-        )
-        .unwrap();
-        let b = PrivateKey::from_str(
-            "8163466f1883598e6dd14027b8da727057165da91485834314f5500a65846f09",
-        )
-        .unwrap();
+        let a = PrivateKey::from_bits(hex!(
+            "77916d0cd56ed1920aef6ca56d8a41bac915b68e4c46a589e0956e27a7b77404"
+        ));
+        let b = PrivateKey::from_bits(hex!(
+            "8163466f1883598e6dd14027b8da727057165da91485834314f5500a65846f09"
+        ));
         let B = PublicKey::from_private_key(&b);
         //let keypair = KeyPair { view: a, spend: b };
         let viewpair = ViewPair { view: a, spend: B };

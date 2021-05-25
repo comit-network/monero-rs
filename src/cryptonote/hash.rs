@@ -58,7 +58,7 @@ impl Hash {
 
     /// Return the scalar of the hash as a little endian number modulo `l` (curve order).
     pub fn as_scalar(&self) -> PrivateKey {
-        PrivateKey::from_scalar(Scalar::from_bytes_mod_order(self.0))
+        Scalar::from_bytes_mod_order(self.0)
     }
 
     /// Hash a stream of bytes and return its scalar representation.

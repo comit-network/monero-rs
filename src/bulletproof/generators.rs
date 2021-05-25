@@ -1,28 +1,14 @@
 //! The `generators` module contains API for producing a set of
 //! generators for a rangeproof.
 
+use crate::util::key::H;
 use curve25519_dalek::constants::ED25519_BASEPOINT_POINT;
-use curve25519_dalek::edwards::{CompressedEdwardsY, EdwardsPoint};
+use curve25519_dalek::edwards::EdwardsPoint;
 use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::traits::MultiscalarMul;
 use hash_edwards_to_edwards::hash_to_point;
 use integer_encoding::VarInt;
 use keccak_hash::keccak_256;
-
-// TODO: Remove this
-lazy_static::lazy_static! {
-    /// Alternate generator of ed25519.
-    ///
-    /// Obtained by hashing `curve25519_dalek::constants::ED25519_BASEPOINT_POINT`.
-    /// Originally used in Monero Ring Confidential Transactions.
-    pub static ref H: EdwardsPoint = {
-        CompressedEdwardsY(hex_literal::hex!(
-            "8b655970153799af2aeadc9ff1add0ea6c7251d54154cfa92c173a0dd39c1f94"
-        ))
-        .decompress()
-        .expect("edwards point")
-    };
-}
 
 /// Represents a pair of base points for Pedersen commitments.
 ///

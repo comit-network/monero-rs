@@ -93,13 +93,13 @@ mod tests {
             let mut commitment_ring =
                 random_array(|| Scalar::random(&mut rng) * ED25519_BASEPOINT_POINT);
             commitment_ring[signing_key_index] = real_commitment_blinding * ED25519_BASEPOINT_POINT
-                + Scalar::from(amount_to_spend) * H.point.decompress().unwrap();
+                + Scalar::from(amount_to_spend) * *H;
 
-            let fee_key = Scalar::from(fee) * H.point.decompress().unwrap();
+            let fee_key = Scalar::from(fee) * *H;
 
             let out_pk_blinding = Scalar::random(&mut rng);
-            let out_pk = out_pk_blinding * ED25519_BASEPOINT_POINT
-                + Scalar::from(output_amount) * H.point.decompress().unwrap();
+            let out_pk =
+                out_pk_blinding * ED25519_BASEPOINT_POINT + Scalar::from(output_amount) * *H;
 
             let pseudo_output_commitment = fee_key + out_pk;
 

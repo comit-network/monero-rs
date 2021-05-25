@@ -8,7 +8,7 @@
 use core::iter;
 use std::convert::TryFrom;
 
-use curve25519_dalek::edwards::{CompressedEdwardsY, EdwardsPoint};
+use curve25519_dalek::edwards::EdwardsPoint;
 use curve25519_dalek::scalar::Scalar;
 use curve25519_dalek::traits::{IsIdentity, VartimeMultiscalarMul};
 use keccak_hash::keccak_256;
@@ -539,117 +539,48 @@ pub enum MpcError {
 
 impl From<RangeProof> for crate::util::ringct::Bulletproof {
     fn from(from: RangeProof) -> Self {
-        use crate::util::ringct::Key;
-
         Self {
-            A: Key {
-                key: from.A.compress().to_bytes(),
-            },
-            S: Key {
-                key: from.S.compress().to_bytes(),
-            },
-            T1: Key {
-                key: from.T_1.compress().to_bytes(),
-            },
-            T2: Key {
-                key: from.T_2.compress().to_bytes(),
-            },
-            taux: Key {
-                key: from.t_x_blinding.to_bytes(),
-            },
-            mu: Key {
-                key: from.e_blinding.to_bytes(),
-            },
-            L: from
-                .ipp_proof
-                .L_vec
-                .iter()
-                .map(|l| Key {
-                    key: l.compress().to_bytes(),
-                })
-                .collect(),
-            R: from
-                .ipp_proof
-                .R_vec
-                .iter()
-                .map(|r| Key {
-                    key: r.compress().to_bytes(),
-                })
-                .collect(),
-            a: Key {
-                key: from.ipp_proof.a.to_bytes(),
-            },
-            b: Key {
-                key: from.ipp_proof.b.to_bytes(),
-            },
-            t: Key {
-                key: from.t_x.to_bytes(),
-            },
+            A: from.A,
+            S: from.S,
+            T1: from.T_1,
+            T2: from.T_2,
+            taux: from.t_x_blinding,
+            mu: from.e_blinding,
+            L: from.ipp_proof.L_vec,
+            R: from.ipp_proof.R_vec,
+            a: from.ipp_proof.a,
+            b: from.ipp_proof.b,
+            t: from.t_x,
         }
     }
 }
 
-#[derive(Debug)]
-pub enum ConversionError {
-    InvalidPoint,
-    NonCanonicalScalar,
-}
-
-impl TryFrom<crate::util::ringct::Bulletproof> for RangeProof {
-    type Error = ConversionError;
-
-    fn try_from(from: crate::util::ringct::Bulletproof) -> Result<Self, ConversionError> {
-        Ok(Self {
-            A: CompressedEdwardsY::from_slice(&from.A.key)
-                .decompress()
-                .ok_or(ConversionError::InvalidPoint)?,
-            S: CompressedEdwardsY::from_slice(&from.S.key)
-                .decompress()
-                .ok_or(ConversionError::InvalidPoint)?,
-            T_1: CompressedEdwardsY::from_slice(&from.T1.key)
-                .decompress()
-                .ok_or(ConversionError::InvalidPoint)?,
-            T_2: CompressedEdwardsY::from_slice(&from.T2.key)
-                .decompress()
-                .ok_or(ConversionError::InvalidPoint)?,
-            t_x: Scalar::from_canonical_bytes(from.t.key)
-                .ok_or(ConversionError::NonCanonicalScalar)?,
-            t_x_blinding: Scalar::from_canonical_bytes(from.taux.key)
-                .ok_or(ConversionError::NonCanonicalScalar)?,
-            e_blinding: Scalar::from_canonical_bytes(from.mu.key)
-                .ok_or(ConversionError::NonCanonicalScalar)?,
+impl From<crate::util::ringct::Bulletproof> for RangeProof {
+    fn from(from: crate::util::ringct::Bulletproof) -> Self {
+        Self {
+            A: from.A,
+            S: from.S,
+            T_1: from.T1,
+            T_2: from.T2,
+            t_x: from.t,
+            t_x_blinding: from.taux,
+            e_blinding: from.mu,
             ipp_proof: InnerProductProof {
-                L_vec: from
-                    .L
-                    .iter()
-                    .map(|L| {
-                        CompressedEdwardsY::from_slice(&L.key)
-                            .decompress()
-                            .ok_or(ConversionError::InvalidPoint)
-                    })
-                    .collect::<Result<Vec<_>, _>>()?,
-                R_vec: from
-                    .R
-                    .iter()
-                    .map(|R| {
-                        CompressedEdwardsY::from_slice(&R.key)
-                            .decompress()
-                            .ok_or(ConversionError::InvalidPoint)
-                    })
-                    .collect::<Result<Vec<_>, _>>()?,
-                a: Scalar::from_canonical_bytes(from.a.key)
-                    .ok_or(ConversionError::NonCanonicalScalar)?,
-                b: Scalar::from_canonical_bytes(from.b.key)
-                    .ok_or(ConversionError::NonCanonicalScalar)?,
+                L_vec: from.L,
+                R_vec: from.R,
+                a: from.a,
+                b: from.b,
             },
-        })
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use curve25519_dalek::edwards::CompressedEdwardsY;
     use rand::thread_rng;
+    use std::convert::TryInto;
 
     #[test]
     fn public_api() {
@@ -779,101 +710,96 @@ mod tests {
     #[test]
     fn verify_monero_mainnet_bulletproof() {
         use crate::util::ringct::Bulletproof;
-        use crate::util::ringct::Key;
         use hex_literal::hex;
 
         // data from:
         // https://xmrchain.net/tx/f34e0414a413cc7d6d4452b1a962f08be6de937eeb76fed9ca0774f5cb3b161b/1
 
         let proof = Bulletproof {
-            A: Key {
-                key: hex!("78ddbccf2e1ced3b68835600768770ebe3e219db19a35f5ebe6495ec58c763d4"),
-            },
-            S: Key {
-                key: hex!("e61bd5f461172a14d31149207a9f473289f89dbf4c42dff5f7cbcbd87a12210e"),
-            },
-            T1: Key {
-                key: hex!("74989471b2e26755d60128a0a54de6e8d0a3d30e9c6810f885f09be27339765f"),
-            },
-            T2: Key {
-                key: hex!("bd0b0fb338cc8f16a3c8b05f504a34223263f6fb61865cff29f62d7731581a85"),
-            },
-            taux: Key {
-                key: hex!("df0abd33124389ef8c32fb948b5e4b40259757b5f0ca6c7010f33c0ee625880f"),
-            },
-            mu: Key {
-                key: hex!("5b98150bedb8ba4861246bb31f3f0cb7a0d9a915475c9be92b847be8c3236602"),
-            },
+            A: hex!("78ddbccf2e1ced3b68835600768770ebe3e219db19a35f5ebe6495ec58c763d4")
+                .try_into()
+                .unwrap(),
+            S: hex!("e61bd5f461172a14d31149207a9f473289f89dbf4c42dff5f7cbcbd87a12210e")
+                .try_into()
+                .unwrap(),
+            T1: hex!("74989471b2e26755d60128a0a54de6e8d0a3d30e9c6810f885f09be27339765f")
+                .try_into()
+                .unwrap(),
+            T2: hex!("bd0b0fb338cc8f16a3c8b05f504a34223263f6fb61865cff29f62d7731581a85")
+                .try_into()
+                .unwrap(),
+            taux: hex!("df0abd33124389ef8c32fb948b5e4b40259757b5f0ca6c7010f33c0ee625880f")
+                .try_into()
+                .unwrap(),
+            mu: hex!("5b98150bedb8ba4861246bb31f3f0cb7a0d9a915475c9be92b847be8c3236602")
+                .try_into()
+                .unwrap(),
             L: vec![
-                Key {
-                    key: hex!("0568cb5dc56fd8077435a87268931c5995367e9f45ad8527248c69c87840f17e"),
-                },
-                Key {
-                    key: hex!("3818ef23fb0da1edb0180be8a06fe66e0c12b85955b96a329eccffeb4f0af152"),
-                },
-                Key {
-                    key: hex!("c1f9e3d157143326e3f60101e2119c2e8528bcada27087b8248226b9ad827db5"),
-                },
-                Key {
-                    key: hex!("46443a7d575c97658f2ffd4cdfaf53de6b39ca340e59f40d195068e4725feb89"),
-                },
-                Key {
-                    key: hex!("b0019ac9d69c511c899ab647695bb6e5c5fff5256aa3b168ecb57b20a5ad6fa8"),
-                },
-                Key {
-                    key: hex!("24f25935783d645279e575eac839beba4c91b04efb4fc0c8d7f4a0fa27d95fe1"),
-                },
-                Key {
-                    key: hex!("5d8f4d63b5ce10d9ab579c30da28108c13abd54e876a0308636fdc8b0e69d059"),
-                },
+                hex!("0568cb5dc56fd8077435a87268931c5995367e9f45ad8527248c69c87840f17e")
+                    .try_into()
+                    .unwrap(),
+                hex!("3818ef23fb0da1edb0180be8a06fe66e0c12b85955b96a329eccffeb4f0af152")
+                    .try_into()
+                    .unwrap(),
+                hex!("c1f9e3d157143326e3f60101e2119c2e8528bcada27087b8248226b9ad827db5")
+                    .try_into()
+                    .unwrap(),
+                hex!("46443a7d575c97658f2ffd4cdfaf53de6b39ca340e59f40d195068e4725feb89")
+                    .try_into()
+                    .unwrap(),
+                hex!("b0019ac9d69c511c899ab647695bb6e5c5fff5256aa3b168ecb57b20a5ad6fa8")
+                    .try_into()
+                    .unwrap(),
+                hex!("24f25935783d645279e575eac839beba4c91b04efb4fc0c8d7f4a0fa27d95fe1")
+                    .try_into()
+                    .unwrap(),
+                hex!("5d8f4d63b5ce10d9ab579c30da28108c13abd54e876a0308636fdc8b0e69d059")
+                    .try_into()
+                    .unwrap(),
             ],
             R: vec![
-                Key {
-                    key: hex!("88f99b0bfb5a4e052b209400594c2c423a95497e3be315d9e8fbb4410bd73102"),
-                },
-                Key {
-                    key: hex!("e2bdf54f0b3456c5816004549e76c88f004baf8a84aa3d581d7dbffde4316ec4"),
-                },
-                Key {
-                    key: hex!("6d808eec11aa732e94040894517806aa615fadf826c9fc351f73f7c13097cc02"),
-                },
-                Key {
-                    key: hex!("8e44c3df858a0991f5b176ae4c862f79bdb153cfb35d1e4c75c28f8493c4a3ff"),
-                },
-                Key {
-                    key: hex!("b0334d4f506cd30173ce6398de28084fc8b687a4cfe4eca08476e8a042a8e6fd"),
-                },
-                Key {
-                    key: hex!("cc11034e07e9c80029b4220cf15574ded93ba96a2f2bc94bd504a30abfddba5a"),
-                },
-                Key {
-                    key: hex!("e5ede5ed6e0d603a668baa586bfa2139553ef487c1a9474fbafaa5ba5b8760d0"),
-                },
+                hex!("88f99b0bfb5a4e052b209400594c2c423a95497e3be315d9e8fbb4410bd73102")
+                    .try_into()
+                    .unwrap(),
+                hex!("e2bdf54f0b3456c5816004549e76c88f004baf8a84aa3d581d7dbffde4316ec4")
+                    .try_into()
+                    .unwrap(),
+                hex!("6d808eec11aa732e94040894517806aa615fadf826c9fc351f73f7c13097cc02")
+                    .try_into()
+                    .unwrap(),
+                hex!("8e44c3df858a0991f5b176ae4c862f79bdb153cfb35d1e4c75c28f8493c4a3ff")
+                    .try_into()
+                    .unwrap(),
+                hex!("b0334d4f506cd30173ce6398de28084fc8b687a4cfe4eca08476e8a042a8e6fd")
+                    .try_into()
+                    .unwrap(),
+                hex!("cc11034e07e9c80029b4220cf15574ded93ba96a2f2bc94bd504a30abfddba5a")
+                    .try_into()
+                    .unwrap(),
+                hex!("e5ede5ed6e0d603a668baa586bfa2139553ef487c1a9474fbafaa5ba5b8760d0")
+                    .try_into()
+                    .unwrap(),
             ],
-            a: Key {
-                key: hex!("d782e742fafc78de94aa51bfd89ec61cbf54180093b3617b694652e6a4cea005"),
-            },
-            b: Key {
-                key: hex!("8ae6cc60d17472f9ca87ffa8932ff480bc55e00d95e60b39aa866bb94ac8f90a"),
-            },
-            t: Key {
-                key: hex!("0f42ab37f27887291eb3f3126708e5ff4fdf4c4499bc43c61516684e9f176100"),
-            },
+            a: hex!("d782e742fafc78de94aa51bfd89ec61cbf54180093b3617b694652e6a4cea005")
+                .try_into()
+                .unwrap(),
+            b: hex!("8ae6cc60d17472f9ca87ffa8932ff480bc55e00d95e60b39aa866bb94ac8f90a")
+                .try_into()
+                .unwrap(),
+            t: hex!("0f42ab37f27887291eb3f3126708e5ff4fdf4c4499bc43c61516684e9f176100")
+                .try_into()
+                .unwrap(),
         };
 
         let commitments = vec![
-            CompressedEdwardsY::from_slice(
-                hex::decode("5bef186a6d084a0372e3d91446f6b7ec4a900ab7b0abf7b205c5f2b2f105b32c")
-                    .unwrap()
-                    .as_slice(),
-            )
+            CompressedEdwardsY(hex!(
+                "5bef186a6d084a0372e3d91446f6b7ec4a900ab7b0abf7b205c5f2b2f105b32c"
+            ))
             .decompress()
             .unwrap(),
-            CompressedEdwardsY::from_slice(
-                hex::decode("22d187e6a788eaeecf0fd4d31f1718e03c259f39fd120fd8ef660ddb1c36a852")
-                    .unwrap()
-                    .as_slice(),
-            )
+            CompressedEdwardsY(hex!(
+                "22d187e6a788eaeecf0fd4d31f1718e03c259f39fd120fd8ef660ddb1c36a852"
+            ))
             .decompress()
             .unwrap(),
         ];
