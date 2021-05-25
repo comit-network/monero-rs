@@ -26,10 +26,9 @@ mod messages;
 mod party;
 mod util;
 
-/// Generate `Bulletproof` for the provided `amounts`.
+/// Generate `Bulletproof` for the provided `amounts` and `blindings`.
 ///
-/// Also returns the amount commitments, together with their
-/// corresponding random blindings.
+/// Also returns the Pedersen commitments of the form `blinding * G + amount * H`.
 pub fn make_bulletproof<T>(
     rng: &mut T,
     amounts: &[u64],
@@ -62,7 +61,7 @@ where
     ))
 }
 
-/// Verify that the `proof` is valid for the provided commitments.
+/// Verify that the `proof` is valid for the provided Pedersen commitments.
 pub fn verify_bulletproof<T>(
     rng: &mut T,
     proof: crate::util::ringct::Bulletproof,
