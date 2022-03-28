@@ -30,7 +30,7 @@ keccak-hash = "0.7.0"
 tiny-keccak = "2"
 base58-monero = { version = "0.3", default-features = false }
 serde = { version = "1.0.124", features = ["derive"], optional = true }
-serde-big-array = { version = "0.3.2", optional = true }
+serde-big-array = { version = "0.4.1", optional = true }
 curve25519-dalek = { version = "3.0.2", features = ["serde"] }
 thiserror = "1.0.24"
 strict_encoding = { version = "1.2", optional = true }
