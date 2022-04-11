@@ -48,7 +48,7 @@ jobs:
         override: true
         profile: minimal
 
-    - uses: Swatinem/rust-cache@v1.2.0
+    - uses: Swatinem/rust-cache@v1.4.0
 
     - name: Install libboost
       run: sudo apt-get install libboost-dev
@@ -86,7 +86,7 @@ jobs:
         override: true
         profile: minimal
 
-    - uses: Swatinem/rust-cache@v1.2.0
+    - uses: Swatinem/rust-cache@v1.4.0
 
     - name: Install libboost
       run: sudo apt-get install libboost-dev
