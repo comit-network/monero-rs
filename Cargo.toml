@@ -43,7 +43,7 @@ clear_on_drop = { version = "0.2", default-features = false }
 itertools = "0.10"
 
 [dependencies.fixed-hash]
-version = "0.7.0"
+version = "0.8.0"
 default-features = false
 
 [dev-dependencies]
